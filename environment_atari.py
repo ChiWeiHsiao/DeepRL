@@ -1,6 +1,5 @@
 import gym
 from gym import wrappers
-import tensorflow as tf
 import numpy as np
 from PIL import Image
 from collections import deque
