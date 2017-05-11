@@ -4,7 +4,7 @@ import numpy as np
 from PIL import Image
 from collections import deque
 
-class GameEnvironment():
+class Game():
     def __init__(self, game_name):
         self.env =  gym.make(game_name)
         #self.env = wrappers.Monitor(self.env, '/tmp/cartpole-experiment-1')
@@ -23,9 +23,11 @@ class GameEnvironment():
         self.state_buffer = deque()  # Clear the state buffer
         observation = self.env.reset()
         frame = self.preprocess_frame(observation)
-        state = frame
+        single_frame = np.reshape(frame, (self.resize_width, self.resize_height, 1))
+        state = single_frame
         for i in range(self.histoy_length-1):
-            state = np.concatenate((state, frame), axis=0)
+            state = np.concatenate((state, single_frame), axis=-1) 
+            # shape of state = (self.resize_width, self.resize_height, self.histoy_length)
         # Prepare 'histoy_length-1' frames in buffer
         for i in range(self.histoy_length-1):
             self.state_buffer.append(frame)
@@ -70,7 +72,7 @@ class GameEnvironment():
 
 
 def example():
-    game = GameEnvironment('AirRaid-v0')
+    game = Game('AirRaid-v0')
     game.show_game_info()
     init_state = game.initial_state()
     game_over = False
