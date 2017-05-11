@@ -16,6 +16,11 @@ class GameEnvironment():
         self.state_buffer = deque() # Buffer keep 'histoy_length-1' frames
 
     def initial_state(self):
+        ''' Initialize game. Prepare initial state and state_buffer
+        Reset the game
+        Build initial state with 'histoy_length' * first observation.
+        Prepare state_buffer with 'histoy_length-1' * first observation
+        '''
         self.state_buffer = deque()  # Clear the state buffer
         observation = self.env.reset()
         frame = self.preprocess_frame(observation)
@@ -28,12 +33,12 @@ class GameEnvironment():
         return state
 
     def step(self, action):
-        """ Execute one action.
-        Step one action in game
+        ''' Execute action_t. Transition from state_t to state_t1, with immediate return return_t1.
+        Execute one action in the game.
         Build current state ( = previous 'histoy_length-1' frames + current frame ).
         Pop out the oldest frame, push latest frame into state_buffer.
-        """
-        observation_t1, reward_t, game_over, info = self.env.step(action)
+        '''
+        observation_t1, reward_t1, game_over, info = self.env.step(action)
         observation_t1 = self.preprocess_frame(observation_t1)
 
         previous_frames = np.array(self.state_buffer)
@@ -45,9 +50,13 @@ class GameEnvironment():
         self.state_buffer.popleft()
         self.state_buffer.append(observation_t1)
 
-        return state_t1, reward_t, game_over, info
+        return state_t1, reward_t1, game_over, info
 
     def preprocess_frame(self, observation):
+        ''' Preprocess screen image data
+        Color is not important here, so change RGB to gray scale.
+        Resize the smaller image for training efficiency.
+        '''
         gray_img = np.dot(observation[...,:3], [0.299, 0.587, 0.114])
         gray_img = Image.fromarray(gray_img)
         resized_img = gray_img.resize((self.resize_width , self.resize_height), Image.BILINEAR )
@@ -56,23 +65,26 @@ class GameEnvironment():
         return result
 
     def show_game_info(self):
-        # Show information about the game
+        ''' Show information about the game'''
         print('Action space: {}'.format(self.env.action_space)) # Discrete(6) => 6 actions,  either 0 or 1
         print('Observation space: {}'.format(self.env.observation_space)) # Box(250, 160, 3), rgb
 
-def run():
-    N_EPISODES = 5
+
+def example():
     game = GameEnvironment('AirRaid-v0')
     game.show_game_info()
-    game.initial_state()
+    init_state = game.initial_state()
     game_over = False
+    N_EPISODES = 3
     for i_episode in range(N_EPISODES):
         while not game_over:
             game.env.render()
-            s, r, game_over, info = game.step(0)
+            action = 1
+            state, reward, game_over, info = game.step(action)
         game.env.reset()
 
+
 if __name__ == '__main__':
-    run()
+    example()
 
 
