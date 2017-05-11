@@ -9,8 +9,8 @@ class Game():
         self.env =  gym.make(game_name)
         #self.env = wrappers.Monitor(self.env, '/tmp/cartpole-experiment-1')
         self.n_actions = self.env.action_space.n
-        self.resize_width = 100
-        self.resize_height = 100
+        self.resize_width = 80
+        self.resize_height = 80
         self.histoy_length = 4  # One state contains 'histoy_length' frames
         self.state_buffer = deque() # Buffer keep 'histoy_length-1' frames
 
