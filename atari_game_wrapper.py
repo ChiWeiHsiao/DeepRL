@@ -3,6 +3,8 @@ from gym import wrappers
 import numpy as np
 from PIL import Image
 from collections import deque
+from random import randint
+
 
 class Game():
     def __init__(self, game_name):
@@ -27,31 +29,32 @@ class Game():
         state = single_frame
         for i in range(self.histoy_length-1):
             state = np.concatenate((state, single_frame), axis=-1) 
-            # shape of state = (self.resize_width, self.resize_height, self.histoy_length)
+        assert state.shape == (self.resize_width, self.resize_height, self.histoy_length)
         # Prepare 'histoy_length-1' frames in buffer
         for i in range(self.histoy_length-1):
             self.state_buffer.append(frame)
         return state
 
     def step(self, action):
-        ''' Execute action_t. Transition from state_t to state_t1, with immediate return return_t1.
+        ''' Execute action_t. Transition from state_t to state_t1, with immediate reward.
         Execute one action in the game.
         Build current state ( = previous 'histoy_length-1' frames + current frame ).
         Pop out the oldest frame, push latest frame into state_buffer.
         '''
-        observation_t1, reward_t1, game_over, info = self.env.step(action)
+        observation_t1, reward, terminal_t1, info = self.env.step(action)
         observation_t1 = self.preprocess_frame(observation_t1)
 
-        previous_frames = np.array(self.state_buffer)
-        state_t1 = np.empty((self.histoy_length, self.resize_width, self.resize_height))
-        state_t1[:self.histoy_length-1, ...] = previous_frames
-        state_t1[self.histoy_length-1] = observation_t1
-
+        previous_frames = np.array(self.state_buffer) #(3, 80, 80)
+        state_t1 = np.empty((self.resize_width, self.resize_height, self.histoy_length))
+        for i in range(previous_frames.shape[0]):
+            state_t1[..., i] = previous_frames[i]
+        state_t1[..., self.histoy_length-1] = observation_t1
+        assert state_t1.shape == (self.resize_width, self.resize_height, self.histoy_length)
         # Pop the oldest frame, add the current frame to the queue
         self.state_buffer.popleft()
         self.state_buffer.append(observation_t1)
 
-        return state_t1, reward_t1, game_over, info
+        return state_t1, reward, terminal_t1, info
 
     def preprocess_frame(self, observation):
         ''' Preprocess screen image data
@@ -70,6 +73,8 @@ class Game():
         print('Action space: {}'.format(self.env.action_space)) # Discrete(6) => 6 actions,  either 0 or 1
         print('Observation space: {}'.format(self.env.observation_space)) # Box(250, 160, 3), rgb
 
+    def random_action(self):
+        return randint(0, self.n_actions-1)
 
 def example():
     game = Game('AirRaid-v0')
