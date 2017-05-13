@@ -18,7 +18,7 @@ RESTORE_MODEL_NAME = 'models/{}-{}'.format(MODEL_ID, RESTORE_GLOBAL_TIME) # The 
 
 # HyperParameter
 DISCOUNT = 0.99
-REPLAY_MEMORY = 50000
+REPLAY_MEMORY = 40000
 BATCH_SIZE = 32
 N_EPISODES = 100
 BEFORE_TRAIN = 10000
@@ -129,8 +129,9 @@ class DeepQ():
                     # the learned value for Q-learning
                     y_j = np.where(terminal_j1, reward_j, reward_j + self.DISCOUNT * max_action_Q.eval(feed_dict={x: state_j1})[0] )
                     train_step.run(feed_dict={x:state_j, y:y_j})
-                if self.global_time % 1000 == 0:
-                   saver.save(sess, 'models/' + MODEL_ID, global_step = self.global_time)
+                if t % 1000 == 0:
+                   saver.save(sess, 'models/' + MODEL_ID, global_step = t+self.global_time)
+                   print('\tSave model as "models/{}-{}"'.format(MODEL_ID, t+self.global_time))
                 
             self.global_time += t
             print('Survival time of this episode = {:10d}'.format(t))
