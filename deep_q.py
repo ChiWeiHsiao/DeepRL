@@ -17,7 +17,7 @@ RESTORE_GLOBAL_TIME = 20603
 RESTORE_MODEL_NAME = 'models/{}-{}'.format(MODEL_ID, RESTORE_GLOBAL_TIME) # The filename of trained model you want to restore
 
 # HyperParameter
-DISCOUNT = 0.3
+DISCOUNT = 0.99
 REPLAY_MEMORY = 50000
 BATCH_SIZE = 32
 N_EPISODES = 100
@@ -83,7 +83,7 @@ class DeepQ():
         max_action_Q = tf.reduce_max(output_Q, reduction_indices=[1])
         y = tf.placeholder("float", [None])
         cost = tf.reduce_mean(tf.square(y - max_action_Q))
-        train_step = tf.train.AdamOptimizer(0.001).minimize(cost)
+        train_step = tf.train.AdamOptimizer(learning_rate=1e-6).minimize(cost)
 
         # Emulate and store trainsitions into replay_memory
         game = atari.Game('AirRaid-v0')
@@ -139,7 +139,7 @@ class DeepQ():
         if(self.global_time <= BEFORE_TRAIN):
             return True
         elif self.epsilon > FINAL_EPSILON and self.global_time > BEFORE_TRAIN:
-            self.epsilon -= (INIT_EPSILON - FINAL_EPSILON) / 2000000
+            self.epsilon -= (INIT_EPSILON - FINAL_EPSILON) / 200
             return random.random() < self.epsilon
 
     def store_to_replay_memory(self, state_t, action_t, reward_t, state_t1, terminal):
