@@ -10,25 +10,25 @@ import random
 
 MODEL_ID = 'Atari-1'
 RESTORE_MODEL = False
+RESTORE_GLOBAL_TIME = 0
 # If this is the first time of running this program, 
-# set 'RESTORE_MODEL = False'.
+# set 'RESTORE_MODEL = False' and 'RESTORE_GLOBAL_TIME = 0'.
 # Otherwise, set 'RESTORE_MODEL = True' and 'RESTORE_GLOBAL_TIME = THE_TIME_YOU_WANT_TO_RESTORE'
-RESTORE_GLOBAL_TIME = 20603
 RESTORE_MODEL_NAME = 'models/{}-{}'.format(MODEL_ID, RESTORE_GLOBAL_TIME) # The filename of trained model you want to restore
 
 # HyperParameter
 DISCOUNT = 0.99
-REPLAY_MEMORY = 40000
+REPLAY_MEMORY = 50000
 BATCH_SIZE = 32
 N_EPISODES = 100
 BEFORE_TRAIN = 10000
+# annealing for exploration probability
 INIT_EPSILON = 1
 FINAL_EPSILON = 0.1
-# simulated annealing
+EXPLORE_TIME = 10000
 
-# state = (img_width, img_height, num_history_frames)
 
-''' tf Wrapper '''
+# tensorflow Wrapper
 def conv(in_tensor, out_channel, kernel_size, stide_size):
     biases_initializer = tf.constant_initializer(0.01)
     weights_initializer = tf.truncated_normal_initializer(mean=0, stddev = 0.01)
@@ -59,8 +59,15 @@ class DeepQ():
         self.N_ACTIONS = N_ACTIONS
         self.N_EPISODES = N_EPISODES
         self.DISCOUNT = DISCOUNT
-        self.global_time = 0
-        self.epsilon = INIT_EPSILON
+        if not  RESTORE_MODEL:
+            self.global_time = 0
+            self.epsilon = INIT_EPSILON
+        else:
+            self.global_time = RESTORE_GLOBAL_TIME
+            if ( self.global_time - BEFORE_TRAIN ) < EXPLORE_TIME:
+                self.epsilon = INIT_EPSILON - (self.global_time - BEFORE_TRAIN) * (INIT_EPSILON - FINAL_EPSILON) / EXPLORE_TIME
+            else:
+                self.epsilon = FINAL_EPSILON
         self.replay_memory = deque()
 
     def approx_Q_network(self):
@@ -94,7 +101,6 @@ class DeepQ():
             init_op = tf.global_variables_initializer()
             init_op.run()
         else:
-            self.global_time = RESTORE_GLOBAL_TIME
             saver.restore(self.sess, RESTORE_MODEL_NAME)
             print('Model restored. Restored global time = {}'.format(RESTORE_GLOBAL_TIME))
 
@@ -114,7 +120,7 @@ class DeepQ():
                 state_t = state_t1
                 if terminal:
                     state_t = game.initial_state()
-                t += 1
+                self.global_time += 1
                 # Train the approx_Q_network
                 if len(self.replay_memory) > BEFORE_TRAIN:
                     if not start_train_flag:
@@ -131,19 +137,20 @@ class DeepQ():
                     # the learned value for Q-learning
                     y_j = np.where(terminal_j1, reward_j, reward_j + self.DISCOUNT * max_action_Q.eval(feed_dict={x: state_j1})[0] )
                     train_step.run(feed_dict={x:state_j, y:y_j})
-                if t % 1000 == 0:
-                   saver.save(sess, 'models/' + MODEL_ID, global_step = t+self.global_time)
-                   print('\tSave model as "models/{}-{}"'.format(MODEL_ID, t+self.global_time))
+                if self.global_time > BEFORE_TRAIN and self.global_time % 1000 == 0:
+                   saver.save(sess, 'models/' + MODEL_ID, global_step = self.global_time)
+                   print('\tSave model as "models/{}-{}"'.format(MODEL_ID, self.global_time))
                 
-            self.global_time += t
-            print('Episode {:3d}: sum of reward, survival time = {:10.2f}, {:8d}'.format(episode, sum_reward, t))
+            print('Episode {:3d}: sum of reward, survival time = {:10.2f}, {:8d}'.format(episode, sum_reward, self.global_time-RESTORE_GLOBAL_TIME))
 
     def explore(self):
-        if(self.global_time <= BEFORE_TRAIN):
+        if self.global_time <= BEFORE_TRAIN:
             return True
-        elif self.epsilon > FINAL_EPSILON and self.global_time > BEFORE_TRAIN:
-            self.epsilon -= (INIT_EPSILON - FINAL_EPSILON) / 200
-            return random.random() < self.epsilon
+        elif (self.global_time - BEFORE_TRAIN) < EXPLORE_TIME:
+            self.epsilon -= (INIT_EPSILON - FINAL_EPSILON) / EXPLORE_TIME
+        elif (self.global_time - BEFORE_TRAIN) ==  EXPLORE_TIME:
+            print('------------------ Stop Annealing. Probability to explore = {:f} ------------------'.format(FINAL_EPSILON))
+        return random.random() < self.epsilon
 
     def store_to_replay_memory(self, state_t, action_t, reward_t, state_t1, terminal):
         transition = [state_t, action_t, reward_t, state_t1, terminal]
