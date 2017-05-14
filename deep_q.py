@@ -101,6 +101,7 @@ class DeepQ():
         for episode in range(self.N_EPISODES):
             t = 0
             terminal = False
+            sum_reward = 0
             while not terminal:
                 # Emulate and store trainsitions into replay_memory
                 if(self.explore()):
@@ -109,6 +110,7 @@ class DeepQ():
                     action_t = max_action.eval(feed_dict={x: np.reshape(state_t, (1,80,80,4))})[0]
                 state_t1, reward_t, terminal, info = game.step(action_t)  # Execute the chosen action in emulator
                 self.store_to_replay_memory(state_t, action_t, reward_t, state_t1, terminal)
+                sum_reward += reward_t
                 state_t = state_t1
                 if terminal:
                     state_t = game.initial_state()
@@ -134,7 +136,7 @@ class DeepQ():
                    print('\tSave model as "models/{}-{}"'.format(MODEL_ID, t+self.global_time))
                 
             self.global_time += t
-            print('Survival time of this episode = {:10d}'.format(t))
+            print('Episode {:3d}: sum of reward, survival time = {:10.2f}, {:8d}'.format(episode, sum_reward, t))
 
     def explore(self):
         if(self.global_time <= BEFORE_TRAIN):
