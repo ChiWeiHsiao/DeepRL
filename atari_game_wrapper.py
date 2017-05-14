@@ -36,8 +36,8 @@ class Game():
         return state
 
     def step(self, action):
-        ''' Execute action_t. Transition from state_t to state_t1, with immediate reward.
-        Execute one action in the game.
+        ''' Execute the given action, move to next time point
+        Execute one action in the game. Transition from state_t to state_t1, with immediate reward.
         Build current state ( = previous 'histoy_length-1' frames + current frame ).
         Pop out the oldest frame, push latest frame into state_buffer.
         '''
@@ -85,7 +85,7 @@ def example():
     for i_episode in range(N_EPISODES):
         while not game_over:
             game.env.render()
-            action = 1
+            action = game.env.action_space.sample()
             state, reward, game_over, info = game.step(action)
         game.env.reset()
 
