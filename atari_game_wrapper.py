@@ -3,7 +3,6 @@ from gym import wrappers
 import numpy as np
 from PIL import Image
 from collections import deque
-from random import randint
 
 
 class Game():
@@ -68,13 +67,14 @@ class Game():
         result = np.reshape(resized_img, (self.resize_width , self.resize_height))
         return result
 
+    def random_action(self):
+        return self.env.action_space.sample()
+
     def show_game_info(self):
         ''' Show information about the game'''
         print('Action space: {}'.format(self.env.action_space)) # Discrete(6) => 6 actions,  either 0 or 1
         print('Observation space: {}'.format(self.env.observation_space)) # Box(250, 160, 3), rgb
 
-    def random_action(self):
-        return randint(0, self.n_actions-1)
 
 def example():
     game = Game('AirRaid-v0')
