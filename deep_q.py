@@ -19,7 +19,7 @@ RESTORE_MODEL_NAME = 'models/{}-{}'.format(MODEL_ID, RESTORE_GLOBAL_TIME) # The 
 
 # HyperParameter
 DISCOUNT = 0.99
-REPLAY_MEMORY = 50000
+REPLAY_MEMORY = 15000
 BATCH_SIZE = 32
 N_EPISODES = 100
 BEFORE_TRAIN = 10000
@@ -51,9 +51,8 @@ def fully_connect(in_tensor, n_out):
 
 
 class DeepQ():
-    def __init__(self, IMG_WIDTH, IMG_HEIGHT, IMG_CHANNEL, N_ACTIONS, sess, N_EPISODES, DISCOUNT):
+    def __init__(self, IMG_WIDTH, IMG_HEIGHT, IMG_CHANNEL, N_ACTIONS, N_EPISODES, DISCOUNT):
         # init replay memory
-        self.sess = sess
         self.IMG_WIDTH = IMG_WIDTH
         self.IMG_HEIGHT = IMG_HEIGHT
         self.IMG_CHANNEL = IMG_CHANNEL
@@ -84,7 +83,7 @@ class DeepQ():
         output_Q = fully_connect(fc1, self.N_ACTIONS)
         return x, output_Q
 
-    def train_network(self):
+    def train_network(self, sess):
         # Define cost function of network
         x, output_Q = self.approx_Q_network()  # output_Q: (batch, N_ACTIONS)
         max_action = tf.argmax(output_Q, axis=1)
@@ -102,7 +101,7 @@ class DeepQ():
             init_op = tf.global_variables_initializer()
             init_op.run()
         else:
-            saver.restore(self.sess, RESTORE_MODEL_NAME)
+            saver.restore(sess, RESTORE_MODEL_NAME)
             print('Model restored. Restored global time = {}'.format(RESTORE_GLOBAL_TIME))
 
         for episode in range(self.N_EPISODES):
@@ -123,7 +122,7 @@ class DeepQ():
                     state_t = game.initial_state()
                 self.global_time += 1
                 # Train the approx_Q_network
-                if len(self.replay_memory) > BEFORE_TRAIN:
+                if len(self.replay_memory) >= BEFORE_TRAIN:
                     if not start_train_flag:
                         start_train_flag = True
                         print('------------------ Start Training ------------------')
@@ -138,12 +137,12 @@ class DeepQ():
                     # the learned value for Q-learning
                     y_j = np.where(terminal_j1, reward_j, reward_j + self.DISCOUNT * max_action_Q.eval(feed_dict={x: state_j1})[0] )
                     train_step.run(feed_dict={x:state_j, y:y_j})
-                if self.global_time > BEFORE_TRAIN and self.global_time % 5000 == 0:
+                if self.global_time > BEFORE_TRAIN and self.global_time % 10000 == 0:
                    saver.save(sess, 'models/' + MODEL_ID, global_step = self.global_time)
                    print('\tSave model as "models/{}-{}"'.format(MODEL_ID, self.global_time))
                 
             print('Episode {:3d}: sum of reward, survival time = {:10.2f}, {:8d}'.format(episode, sum_reward, self.global_time-RESTORE_GLOBAL_TIME))
-            print("{} Kb".format(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss))
+            print('{:.2f} MB, replay memory size {:d}'.format(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1000, len(self.replay_memory)))
         saver.save(sess, 'models/' + 'final_' + MODEL_ID, global_step = self.global_time)
         print('\tFinal model as "models/{}-{}"'.format(MODEL_ID, self.global_time))
 
@@ -166,6 +165,6 @@ class DeepQ():
 
 if __name__ == '__main__':
     sess = tf.InteractiveSession()
-    dqn = DeepQ(80, 80, 4, 6, sess, N_EPISODES, DISCOUNT)
-    dqn.train_network()
+    dqn = DeepQ(80, 80, 4, 6, N_EPISODES, DISCOUNT)
+    dqn.train_network(sess)
 
