@@ -7,6 +7,7 @@ import numpy as np
 from collections import deque 
 import atari_game_wrapper as atari
 import random
+import resource
 
 MODEL_ID = 'Atari-1'
 RESTORE_MODEL = False
@@ -68,7 +69,7 @@ class DeepQ():
                 self.epsilon = INIT_EPSILON - (self.global_time - BEFORE_TRAIN) * (INIT_EPSILON - FINAL_EPSILON) / EXPLORE_TIME
             else:
                 self.epsilon = FINAL_EPSILON
-        self.replay_memory = deque()
+        self.replay_memory = deque(maxlen=REPLAY_MEMORY)
 
     def approx_Q_network(self):
         x = tf.placeholder('float', [None, self.IMG_WIDTH, self.IMG_HEIGHT, self.IMG_CHANNEL])
@@ -137,11 +138,15 @@ class DeepQ():
                     # the learned value for Q-learning
                     y_j = np.where(terminal_j1, reward_j, reward_j + self.DISCOUNT * max_action_Q.eval(feed_dict={x: state_j1})[0] )
                     train_step.run(feed_dict={x:state_j, y:y_j})
-                if self.global_time > BEFORE_TRAIN and self.global_time % 1000 == 0:
+                if self.global_time > BEFORE_TRAIN and self.global_time % 5000 == 0:
                    saver.save(sess, 'models/' + MODEL_ID, global_step = self.global_time)
                    print('\tSave model as "models/{}-{}"'.format(MODEL_ID, self.global_time))
                 
             print('Episode {:3d}: sum of reward, survival time = {:10.2f}, {:8d}'.format(episode, sum_reward, self.global_time-RESTORE_GLOBAL_TIME))
+            print("{} Kb".format(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss))
+        saver.save(sess, 'models/' + 'final_' + MODEL_ID, global_step = self.global_time)
+        print('\tFinal model as "models/{}-{}"'.format(MODEL_ID, self.global_time))
+
 
     def explore(self):
         if self.global_time <= BEFORE_TRAIN:

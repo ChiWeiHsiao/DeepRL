@@ -8,7 +8,7 @@ from collections import deque
 class Game():
     def __init__(self, game_name):
         self.env =  gym.make(game_name)
-        #self.env = wrappers.Monitor(self.env, '/tmp/cartpole-experiment-1')
+        #self.env = wrappers.Monitor(self.env, 'records/atari-experiment-1')
         self.n_actions = self.env.action_space.n
         self.resize_width = 80
         self.resize_height = 80
