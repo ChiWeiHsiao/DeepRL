@@ -1,7 +1,3 @@
-'''
-Deep Q Network with Experience Replay
-NIPS 2013 Paper: https://arxiv.org/pdf/1312.5602.pdf)
-'''
 import tensorflow as tf
 import numpy as np
 from collections import deque 
@@ -9,7 +5,7 @@ import atari_game_wrapper as atari
 import random
 import resource
 
-MODEL_ID = 'Atari-1'
+MODEL_ID = 'double'
 RESTORE_MODEL = False
 RESTORE_GLOBAL_TIME = 0
 # If this is the first time of running this program, 
@@ -30,24 +26,22 @@ EXPLORE_TIME = 10000
 
 
 # tensorflow Wrapper
-def conv(in_tensor, out_channel, kernel_size, stide_size):
-    biases_initializer = tf.constant_initializer(0.01)
-    weights_initializer = tf.truncated_normal_initializer(mean=0, stddev = 0.01)
-    conv = tf.contrib.layers.conv2d(in_tensor, out_channel, kernel_size=kernel_size, stride=stide_size, activation_fn=None, biases_initializer=biases_initializer, weights_initializer=weights_initializer, padding='SAME')
+def weight_variable(shape):
+    initial = tf.truncated_normal(shape, stddev=0.01)
+    return tf.Variable(initial) 
+
+def bias_variable(shape):
+    initial = tf.fill(shape, 0.01)
+    return tf.Variable(initial)
+
+def conv(x, W, b, stride):
+    stride_list = [1, stride, stride, 1]
+    conv = tf.nn.conv2d(x, W, stride_list, 'SAME') + b
     return tf.nn.relu(conv)
 
 def maxpool(in_tensor, kernel_size, stide_size):
     pool = tf.contrib.layers.max_pool2d(in_tensor, kernel_size=kernel_size, stride=stide_size, padding='SAME')
     return pool
-
-def lrn(in_tensor):
-    return tf.nn.lrn(in_tensor, depth_radius=5, bias=1.0, alpha=0.001/9.0, beta=0.75)
-
-def fully_connect(in_tensor, n_out):
-    biases_initializer = tf.constant_initializer(0.01)
-    weights_initializer = tf.truncated_normal_initializer(mean=0, stddev = 0.01)
-    fc = tf.contrib.layers.fully_connected(in_tensor, n_out, activation_fn=None, biases_initializer=biases_initializer, weights_initializer=weights_initializer, trainable=True)
-    return tf.nn.relu(fc)
 
 
 class DeepQ():
@@ -59,6 +53,10 @@ class DeepQ():
         self.N_ACTIONS = N_ACTIONS
         self.N_EPISODES = N_EPISODES
         self.DISCOUNT = DISCOUNT
+        self.COPY_STEP = 4
+        self.W, self.b = self.initialize_weights()
+        self.target_W, self.target_b = self.initialize_weights()
+        
         if not  RESTORE_MODEL:
             self.global_time = 0
             self.epsilon = INIT_EPSILON
@@ -72,22 +70,40 @@ class DeepQ():
 
     def approx_Q_network(self):
         x = tf.placeholder('float', [None, self.IMG_WIDTH, self.IMG_HEIGHT, self.IMG_CHANNEL])
-        conv1 = conv(x, out_channel=32, kernel_size=8, stide_size=4)
-        pool1 = maxpool(conv1, kernel_size=2, stide_size=2)
-        conv2 = conv(pool1, out_channel=64, kernel_size=4, stide_size=2)
-        pool2 = maxpool(conv2, kernel_size=2, stide_size=2)
-        conv3 = conv(pool2, out_channel=64, kernel_size=3, stide_size=1)
-        pool3 = maxpool(conv3, kernel_size=2, stide_size=2)
+        h_c1 = conv(x, self.W['c1'], self.b['c1'], 4)
+        pool1 = maxpool(h_c1, kernel_size=2, stide_size=2)
+        h_c2 = conv(pool1, self.W['c2'], self.b['c2'], 2)
+        pool2 = maxpool(h_c2, kernel_size=2, stide_size=2)
+        h_c3 = conv(pool2, self.W['c3'], self.b['c3'], 1)
+        pool3 = maxpool(h_c3, kernel_size=2, stide_size=2)
         flatten = tf.contrib.layers.flatten(pool3)
-        fc1 = fully_connect(flatten, 256)
-        output_Q = fully_connect(fc1, self.N_ACTIONS)
+        h_f1 = tf.nn.relu(tf.add(tf.matmul(flatten, self.W['f1']), self.b['f1']))
+        output_Q = tf.nn.relu(tf.add(tf.matmul(h_f1, self.W['f2']), self.b['f2']))
         return x, output_Q
+
+    def target_Q_network(self):
+        x = tf.placeholder('float', [None, self.IMG_WIDTH, self.IMG_HEIGHT, self.IMG_CHANNEL])
+        h_c1 = conv(x, self.target_W['c1'], self.target_b['c1'], 4)
+        pool1 = maxpool(h_c1, kernel_size=2, stide_size=2)
+        h_c2 = conv(pool1, self.target_W['c2'], self.target_b['c2'], 2)
+        pool2 = maxpool(h_c2, kernel_size=2, stide_size=2)
+        h_c3 = conv(pool2, self.target_W['c3'], self.target_b['c3'], 1)
+        pool3 = maxpool(h_c3, kernel_size=2, stide_size=2)
+        flatten = tf.contrib.layers.flatten(pool3)
+        h_f1 = tf.nn.relu(tf.add(tf.matmul(flatten, self.target_W['f1']), self.target_b['f1']))
+        target_Q = tf.nn.relu(tf.add(tf.matmul(h_f1, self.target_W['f2']), self.target_b['f2']))
+        return x, target_Q
 
     def train_network(self, sess):
         # Define cost function of network
         x, output_Q = self.approx_Q_network()  # output_Q: (batch, N_ACTIONS)
         max_action = tf.argmax(output_Q, axis=1)
         max_action_Q = tf.reduce_max(output_Q, reduction_indices=[1])
+
+        target_x, target_output_Q = self.target_Q_network()
+        target_max_action = tf.argmax(target_output_Q, axis=1)
+        target_max_action_Q = tf.reduce_max(output_Q, reduction_indices=[1])
+
         y = tf.placeholder("float", [None])
         cost = tf.reduce_mean(tf.square(y - max_action_Q))
         train_step = tf.train.AdamOptimizer(learning_rate=1e-6).minimize(cost)
@@ -135,13 +151,17 @@ class DeepQ():
                         state_j1.append(transition[3])
                         terminal_j1.append(transition[4])
                     # the learned value for Q-learning
-                    y_j = np.where(terminal_j1, reward_j, reward_j + self.DISCOUNT * max_action_Q.eval(feed_dict={x: state_j1})[0] )
+                    y_j = np.where(terminal_j1, reward_j, reward_j + self.DISCOUNT * target_max_action_Q.eval(feed_dict={x: state_j1})[0] )
                     train_step.run(feed_dict={x:state_j, y:y_j})
-                if self.global_time > BEFORE_TRAIN and self.global_time % 10000 == 0:
-                   saver.save(sess, 'models/' + MODEL_ID, global_step = self.global_time)
-                   print('\tSave model as "models/{}-{}"'.format(MODEL_ID, self.global_time))
+
+                    if self.global_time % self.COPY_STEP == 0:
+                        self.copy_weights()
+
+                #if self.global_time > BEFORE_TRAIN and self.global_time % 10000 == 0:
+                   #saver.save(sess, 'models/' + MODEL_ID, global_step = self.global_time)
+                   #print('\tSave model as "models/{}-{}"'.format(MODEL_ID, self.global_time))
                 
-            print('Episode {:3d}: sum of reward, survival time = {:10.2f}, {:8d}'.format(episode, sum_reward, self.global_time-RESTORE_GLOBAL_TIME))
+            print('Episode {:3d}: sum of reward={:10.2f}, survival time ={:8d}'.format(episode, sum_reward, self.global_time-RESTORE_GLOBAL_TIME))
             print('{:.2f} MB, replay memory size {:d}'.format(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1000, len(self.replay_memory)))
         saver.save(sess, 'models/' + 'final_' + MODEL_ID, global_step = self.global_time)
         print('\tFinal model as "models/{}-{}"'.format(MODEL_ID, self.global_time))
@@ -161,6 +181,36 @@ class DeepQ():
         self.replay_memory.append(transition)
         if len(self.replay_memory) > REPLAY_MEMORY:
             self.replay_memory.popleft()
+
+    def initialize_weights(self):
+        weight = {
+            'c1': weight_variable([8,8,4,32]),
+            'c2': weight_variable([4,4,32,64]),
+            'c3': weight_variable([3,3,64,64]),
+            'f1': weight_variable([256, 256]),
+            'f2': weight_variable([256, self.N_ACTIONS]),
+        }
+        bias = {
+            'c1': bias_variable([32]),
+            'c2': bias_variable([64]),
+            'c3': bias_variable([64]),
+            'f1': bias_variable([256]),
+            'f2': bias_variable([self.N_ACTIONS]),
+        }
+        return weight, bias
+
+    def copy_weights(self):
+        self.target_W['c1'].assign(self.W['c1'])
+        self.target_W['c2'].assign(self.W['c2'])
+        self.target_W['c3'].assign(self.W['c3'])
+        self.target_W['f1'].assign(self.W['f1'])
+        self.target_W['f2'].assign(self.W['f2'])
+
+        self.target_b['c1'].assign(self.b['c1'])
+        self.target_b['c2'].assign(self.b['c2'])
+        self.target_b['c3'].assign(self.b['c3'])
+        self.target_b['f1'].assign(self.b['f1'])
+        self.target_b['f2'].assign(self.b['f2'])
 
 
 if __name__ == '__main__':
