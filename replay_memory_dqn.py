@@ -8,18 +8,15 @@ from collections import deque
 import atari_game_wrapper as atari
 import random
 import resource
+import os
+import json
 
-MODEL_ID = 'Atari-1'
-RESTORE_MODEL = False
-RESTORE_GLOBAL_TIME = 0
-# If this is the first time of running this program, 
-# set 'RESTORE_MODEL = False' and 'RESTORE_GLOBAL_TIME = 0'.
-# Otherwise, set 'RESTORE_MODEL = True' and 'RESTORE_GLOBAL_TIME = THE_TIME_YOU_WANT_TO_RESTORE'
-RESTORE_MODEL_NAME = 'models/{}-{}'.format(MODEL_ID, RESTORE_GLOBAL_TIME) # The filename of trained model you want to restore
+MODEL_ID = 'replay-1'
+directory = 'models/{}'.format(MODEL_ID)
 
 # HyperParameter
 DISCOUNT = 0.99
-REPLAY_MEMORY = 15000
+REPLAY_MEMORY = 20000
 BATCH_SIZE = 32
 N_EPISODES = 100
 BEFORE_TRAIN = 10000
@@ -59,16 +56,10 @@ class DeepQ():
         self.N_ACTIONS = N_ACTIONS
         self.N_EPISODES = N_EPISODES
         self.DISCOUNT = DISCOUNT
-        if not  RESTORE_MODEL:
-            self.global_time = 0
-            self.epsilon = INIT_EPSILON
-        else:
-            self.global_time = RESTORE_GLOBAL_TIME
-            if ( self.global_time - BEFORE_TRAIN ) < EXPLORE_TIME:
-                self.epsilon = INIT_EPSILON - (self.global_time - BEFORE_TRAIN) * (INIT_EPSILON - FINAL_EPSILON) / EXPLORE_TIME
-            else:
-                self.epsilon = FINAL_EPSILON
+        self.global_time = 0
+        self.epsilon = INIT_EPSILON
         self.replay_memory = deque(maxlen=REPLAY_MEMORY)
+        self.record = {'reward': [], 'survival_time': []}
 
     def approx_Q_network(self):
         x = tf.placeholder('float', [None, self.IMG_WIDTH, self.IMG_HEIGHT, self.IMG_CHANNEL])
@@ -97,12 +88,8 @@ class DeepQ():
         state_t = game.initial_state()
         start_train_flag = False
         saver = tf.train.Saver()
-        if not RESTORE_MODEL:
-            init_op = tf.global_variables_initializer()
-            init_op.run()
-        else:
-            saver.restore(sess, RESTORE_MODEL_NAME)
-            print('Model restored. Restored global time = {}'.format(RESTORE_GLOBAL_TIME))
+        init_op = tf.global_variables_initializer()
+        init_op.run()
 
         for episode in range(self.N_EPISODES):
             t = 0
@@ -120,7 +107,7 @@ class DeepQ():
                 state_t = state_t1
                 if terminal:
                     state_t = game.initial_state()
-                self.global_time += 1
+                t += 1
                 # Train the approx_Q_network
                 if len(self.replay_memory) >= BEFORE_TRAIN:
                     if not start_train_flag:
@@ -137,15 +124,20 @@ class DeepQ():
                     # the learned value for Q-learning
                     y_j = np.where(terminal_j1, reward_j, reward_j + self.DISCOUNT * max_action_Q.eval(feed_dict={x: state_j1})[0] )
                     train_step.run(feed_dict={x:state_j, y:y_j})
-                if self.global_time > BEFORE_TRAIN and self.global_time % 10000 == 0:
-                   saver.save(sess, 'models/' + MODEL_ID, global_step = self.global_time)
-                   print('\tSave model as "models/{}-{}"'.format(MODEL_ID, self.global_time))
                 
-            print('Episode {:3d}: sum of reward, survival time = {:10.2f}, {:8d}'.format(episode, sum_reward, self.global_time-RESTORE_GLOBAL_TIME))
+            self.record['reward'].append(sum_reward)
+            self.record['survival_time'].append(t)
+            print('Episode {:3d}: sum of reward={:10.2f}, survival time ={:8d}'.format(episode, sum_reward, t))
             print('{:.2f} MB, replay memory size {:d}'.format(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1000, len(self.replay_memory)))
-        saver.save(sess, 'models/' + 'final_' + MODEL_ID, global_step = self.global_time)
-        print('\tFinal model as "models/{}-{}"'.format(MODEL_ID, self.global_time))
+            self.global_time += t
 
+        # Save model
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+        save_path = saver.save(sess, '{}/model.ckpt'.format(directory))
+        print('Model saved in file: %s' %save_path)
+        with open('record/{}.json'.format(MODEL_ID), 'w') as f:
+            json.dump(self.record, f, indent=1)
 
     def explore(self):
         if self.global_time <= BEFORE_TRAIN:

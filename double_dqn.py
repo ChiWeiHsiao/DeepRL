@@ -4,18 +4,15 @@ from collections import deque
 import atari_game_wrapper as atari
 import random
 import resource
+import os
+import json
 
-MODEL_ID = 'double'
-RESTORE_MODEL = False
-RESTORE_GLOBAL_TIME = 0
-# If this is the first time of running this program, 
-# set 'RESTORE_MODEL = False' and 'RESTORE_GLOBAL_TIME = 0'.
-# Otherwise, set 'RESTORE_MODEL = True' and 'RESTORE_GLOBAL_TIME = THE_TIME_YOU_WANT_TO_RESTORE'
-RESTORE_MODEL_NAME = 'models/{}-{}'.format(MODEL_ID, RESTORE_GLOBAL_TIME) # The filename of trained model you want to restore
+MODEL_ID = 'double1'
+directory = 'models/{}'.format(MODEL_ID)
 
 # HyperParameter
 DISCOUNT = 0.99
-REPLAY_MEMORY = 15000
+REPLAY_MEMORY = 20000
 BATCH_SIZE = 32
 N_EPISODES = 100
 BEFORE_TRAIN = 10000
@@ -56,17 +53,10 @@ class DeepQ():
         self.COPY_STEP = 4
         self.W, self.b = self.initialize_weights()
         self.target_W, self.target_b = self.initialize_weights()
-        
-        if not  RESTORE_MODEL:
-            self.global_time = 0
-            self.epsilon = INIT_EPSILON
-        else:
-            self.global_time = RESTORE_GLOBAL_TIME
-            if ( self.global_time - BEFORE_TRAIN ) < EXPLORE_TIME:
-                self.epsilon = INIT_EPSILON - (self.global_time - BEFORE_TRAIN) * (INIT_EPSILON - FINAL_EPSILON) / EXPLORE_TIME
-            else:
-                self.epsilon = FINAL_EPSILON
+        self.global_time = 0
+        self.epsilon = INIT_EPSILON
         self.replay_memory = deque(maxlen=REPLAY_MEMORY)
+        self.record = {'reward': [], 'survival_time': []}
 
     def approx_Q_network(self):
         x = tf.placeholder('float', [None, self.IMG_WIDTH, self.IMG_HEIGHT, self.IMG_CHANNEL])
@@ -94,7 +84,7 @@ class DeepQ():
         target_Q = tf.nn.relu(tf.add(tf.matmul(h_f1, self.target_W['f2']), self.target_b['f2']))
         return x, target_Q
 
-    def train_network(self, sess):
+    def train(self, sess):
         # Define cost function of network
         x, output_Q = self.approx_Q_network()  # output_Q: (batch, N_ACTIONS)
         max_action = tf.argmax(output_Q, axis=1)
@@ -113,12 +103,8 @@ class DeepQ():
         state_t = game.initial_state()
         start_train_flag = False
         saver = tf.train.Saver()
-        if not RESTORE_MODEL:
-            init_op = tf.global_variables_initializer()
-            init_op.run()
-        else:
-            saver.restore(sess, RESTORE_MODEL_NAME)
-            print('Model restored. Restored global time = {}'.format(RESTORE_GLOBAL_TIME))
+        init_op = tf.global_variables_initializer()
+        init_op.run()
 
         for episode in range(self.N_EPISODES):
             t = 0
@@ -136,7 +122,7 @@ class DeepQ():
                 state_t = state_t1
                 if terminal:
                     state_t = game.initial_state()
-                self.global_time += 1
+                t += 1
                 # Train the approx_Q_network
                 if len(self.replay_memory) >= BEFORE_TRAIN:
                     if not start_train_flag:
@@ -154,17 +140,55 @@ class DeepQ():
                     y_j = np.where(terminal_j1, reward_j, reward_j + self.DISCOUNT * target_max_action_Q.eval(feed_dict={x: state_j1})[0] )
                     train_step.run(feed_dict={x:state_j, y:y_j})
 
-                    if self.global_time % self.COPY_STEP == 0:
+                    if t % self.COPY_STEP == 0:
                         self.copy_weights()
 
-                #if self.global_time > BEFORE_TRAIN and self.global_time % 10000 == 0:
-                   #saver.save(sess, 'models/' + MODEL_ID, global_step = self.global_time)
-                   #print('\tSave model as "models/{}-{}"'.format(MODEL_ID, self.global_time))
-                
-            print('Episode {:3d}: sum of reward={:10.2f}, survival time ={:8d}'.format(episode, sum_reward, self.global_time-RESTORE_GLOBAL_TIME))
+            self.record['reward'].append(sum_reward)
+            self.record['survival_time'].append(t)
+            print('Episode {:3d}: sum of reward={:10.2f}, survival time ={:8d}'.format(episode, sum_reward, t))
             print('{:.2f} MB, replay memory size {:d}'.format(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1000, len(self.replay_memory)))
-        saver.save(sess, 'models/' + 'final_' + MODEL_ID, global_step = self.global_time)
-        print('\tFinal model as "models/{}-{}"'.format(MODEL_ID, self.global_time))
+            self.global_time += t
+
+        # Save model
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+        save_path = saver.save(sess, '%s/model.ckpt' %directory)
+        print('Model saved in file: %s' % save_path)
+        with open('record/{}.json'.format(MODEL_ID), 'w') as f:
+            json.dump(self.record, f, indent=1)
+
+    def test(self, sess):
+        saver = tf.train.Saver()
+        model_name = '%s/model' %directory  #'models/final_double-101915'
+        saver.restore(sess, model_name)
+        print('Model restored from {}'.format(model_name))
+        x, output_Q = self.approx_Q_network()  # output_Q: (batch, N_ACTIONS)
+        max_action = tf.argmax(output_Q, axis=1)
+
+        game = atari.Game('AirRaid-v0')
+        state_t = game.initial_state()
+        max_action_Q = tf.reduce_max(output_Q, reduction_indices=[1])
+
+        n_episodes = 20
+        game.env.render()
+        for episode in range(n_episodes):
+            terminal = False
+            total_reward = sum_reward = 0
+            total_survival_time = survival_time = 0
+            while not terminal:
+                action_t = max_action.eval(feed_dict={x: np.reshape(state_t, (1,80,80,4))})[0]
+                print(action_t, end='')
+                state_t1, reward_t, terminal, info = game.step(action_t)  # Execute the chosen action in emulator
+                sum_reward += reward_t
+                state_t = state_t1
+                if terminal:
+                    state_t = game.initial_state()
+                survival_time += 1
+            print('Run {}: reward={:10.2f}, survival time ={:8d}'.format(episode, sum_reward, survival_time))
+            total_reward += sum_reward
+            total_survival_time += survival_time
+        print('Average: reward={:10.2f}, survival time ={:8.2f}'.format(n_episodes, total_reward/n_episodes, total_survival_time/n_episodes))
+
 
 
     def explore(self):
@@ -216,5 +240,6 @@ class DeepQ():
 if __name__ == '__main__':
     sess = tf.InteractiveSession()
     dqn = DeepQ(80, 80, 4, 6, N_EPISODES, DISCOUNT)
-    dqn.train_network(sess)
+    dqn.train(sess)
+    #dqn.test(sess)
 
