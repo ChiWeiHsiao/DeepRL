@@ -5,7 +5,7 @@ NIPS 2013 Paper: https://arxiv.org/pdf/1312.5602.pdf)
 import tensorflow as tf
 import numpy as np
 from collections import deque 
-import atari_game_wrapper as atari
+import game_wrapper
 import random
 import resource
 import os
@@ -18,30 +18,17 @@ directory = 'models/{}'.format(MODEL_ID)
 SKIP_FRAMES = 1 #4
 DISCOUNT = 0.99
 LEARNING_RATE = 0.0001
-REPLAY_MEMORY = 20000
+REPLAY_MEMORY = 2000
 BATCH_SIZE = 32
-N_EPISODES = 5000
-BEFORE_TRAIN = 10000
+N_EPISODES = 1000
+BEFORE_TRAIN = 1000
 # annealing for exploration probability
 INIT_EPSILON = 1
 FINAL_EPSILON = 0.1
-EXPLORE_TIME = 20000
+EXPLORE_TIME = 2000
 
 
 # tensorflow Wrapper
-def conv(in_tensor, out_channel, kernel_size, stide_size):
-    biases_initializer = tf.constant_initializer(0.1)
-    weights_initializer = tf.random_normal_initializer(mean=0, stddev = 0.0001) #tf.contrib.layers.xavier_initializer(uniform=True)
-    conv = tf.contrib.layers.conv2d(in_tensor, out_channel, kernel_size=kernel_size, stride=stide_size, activation_fn=None, biases_initializer=biases_initializer, weights_initializer=weights_initializer, padding='SAME')
-    return tf.nn.relu(conv)
-
-def maxpool(in_tensor, kernel_size, stide_size):
-    pool = tf.contrib.layers.max_pool2d(in_tensor, kernel_size=kernel_size, stride=stide_size, padding='SAME')
-    return pool
-
-def lrn(in_tensor):
-    return tf.nn.lrn(in_tensor, depth_radius=5, bias=1.0, alpha=0.001/9.0, beta=0.75)
-
 def fully_connect(in_tensor, n_out):
     biases_initializer = tf.constant_initializer(0.01)
     weights_initializer = tf.truncated_normal_initializer(mean=0, stddev = 0.01)
@@ -50,31 +37,26 @@ def fully_connect(in_tensor, n_out):
 
 
 class DeepQ():
-    def __init__(self, IMG_WIDTH, IMG_HEIGHT, IMG_CHANNEL, N_ACTIONS, N_EPISODES, DISCOUNT):
+    def __init__(self, N_OBSERVATIONS, N_HISTORY_LENGTH, N_ACTIONS, N_EPISODES, DISCOUNT, render):
         # init replay memory
-        self.IMG_WIDTH = IMG_WIDTH
-        self.IMG_HEIGHT = IMG_HEIGHT
-        self.IMG_CHANNEL = IMG_CHANNEL
+        self.N_OBSERVATIONS = N_OBSERVATIONS
+        self.N_HISTORY_LENGTH = N_HISTORY_LENGTH
         self.N_ACTIONS = N_ACTIONS
         self.N_EPISODES = N_EPISODES
         self.DISCOUNT = DISCOUNT
+        self.render = render
         self.global_time = 0
         self.epsilon = INIT_EPSILON
         self.replay_memory = deque(maxlen=REPLAY_MEMORY)
-        self.record = {'reward': [], 'survival_time': []}
+        self.record = {'reward': [], 'time_used': []}
 
 
     def approx_Q_network(self):
-        x = tf.placeholder('float', [None, self.IMG_WIDTH, self.IMG_HEIGHT, self.IMG_CHANNEL])
-        conv1 = conv(x, out_channel=32, kernel_size=8, stide_size=4)
-        pool1 = maxpool(conv1, kernel_size=2, stide_size=2)
-        conv2 = conv(pool1, out_channel=64, kernel_size=4, stide_size=2)
-        pool2 = maxpool(conv2, kernel_size=2, stide_size=2)
-        conv3 = conv(pool2, out_channel=64, kernel_size=3, stide_size=1)
-        pool3 = maxpool(conv3, kernel_size=2, stide_size=2)
-        flatten = tf.contrib.layers.flatten(pool3)
-        fc1 = tf.nn.relu(fully_connect(flatten, 256))
-        output_Q = tf.nn.softmax(fully_connect(fc1, self.N_ACTIONS))
+        x = tf.placeholder('float', [None, self.N_HISTORY_LENGTH, self.N_OBSERVATIONS])
+        flatten = tf.contrib.layers.flatten(x)
+        fc1 = tf.nn.relu(fully_connect(flatten, 128))
+        fc2 = tf.nn.relu(fully_connect(fc1, 64))
+        output_Q = tf.nn.softmax(fully_connect(fc2, self.N_ACTIONS))
         return x, output_Q
 
     def train_network(self, sess):
@@ -87,7 +69,7 @@ class DeepQ():
         train_step = tf.train.AdamOptimizer(LEARNING_RATE).minimize(cost)
 
         # Emulate and store trainsitions into replay_memory
-        game = atari.Game('Breakout-v0')  #AirRaid-v0 #Enduro-v0
+        game = game_wrapper.Game('MountainCar-v0', self.render)
         state_t = game.initial_state()
         start_train_flag = False
         saver = tf.train.Saver()
@@ -104,7 +86,7 @@ class DeepQ():
                     action_t = game.random_action()
                     #print(action_t, end='\' ')
                 else:
-                    action_t = max_action.eval(feed_dict={x: np.reshape(state_t, (1,80,80,4))})[0]
+                    action_t = max_action.eval(feed_dict={x: np.reshape(state_t, (1, self.N_HISTORY_LENGTH, self.N_OBSERVATIONS))})[0]
                     print(action_t, end=' ')
                 for i in range(SKIP_FRAMES):
                     state_t1, reward_t, terminal, info = game.step(action_t)  # Execute the chosen action in emulator
@@ -132,8 +114,8 @@ class DeepQ():
                     train_step.run(feed_dict={x:state_j, y:y_j})
                 
             self.record['reward'].append(sum_reward)
-            self.record['survival_time'].append(t)
-            print('\nEpisode {:3d}: sum of reward={:10.2f}, survival time ={:8d}'.format(episode, sum_reward, t))
+            self.record['time_used'].append(t)
+            print('\nEpisode {:3d}: sum of reward={:10.2f}, time used={:8d}'.format(episode, sum_reward, t))
             print('{:.2f} MB, replay memory size {:d}'.format(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1000, len(self.replay_memory)))
             self.global_time += t
 
@@ -163,6 +145,6 @@ class DeepQ():
 
 if __name__ == '__main__':
     sess = tf.InteractiveSession()
-    dqn = DeepQ(80, 80, 4, 6, N_EPISODES, DISCOUNT)
+    dqn = DeepQ(2, 2, 3, N_EPISODES, DISCOUNT, False)
     dqn.train_network(sess)
 

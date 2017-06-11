@@ -6,12 +6,13 @@ from collections import deque
 
 
 class Game():
-    def __init__(self, game_name):
+    def __init__(self, game_name, render=False):
         self.env =  gym.make(game_name)
         #self.env = wrappers.Monitor(self.env, 'records/atari-experiment-1')
+        self.render = render
         self.n_actions = self.env.action_space.n
-        self.n_observation = 2 #?
-        self.histoy_length = 4  # One state contains 'histoy_length' observations
+        self.n_observation = 2
+        self.histoy_length = 2  # One state contains 'histoy_length' observations
         self.state_buffer = deque() # Buffer keep 'histoy_length-1' observations
 
     def initial_state(self):
@@ -22,6 +23,8 @@ class Game():
         '''
         self.state_buffer = deque()  # Clear the state buffer
         observation = self.env.reset()
+        if self.render:
+            self.env.render()
         observation_reshaped = np.stack([observation], axis=0)
         state = observation_reshaped
         for i in range(self.histoy_length-1):
@@ -40,6 +43,8 @@ class Game():
         Build current state ( = previous 'histoy_length-1' observations + current observation ).
         Pop out the oldest observation, push latest observation into state_buffer.
         '''
+        if self.render:
+            self.env.render()
         observation_t1, reward, terminal_t1, info = self.env.step(action)
         previous_observations = np.array(self.state_buffer) #(3, 4)
         state_t1 = np.empty((self.histoy_length, self.n_observation))
