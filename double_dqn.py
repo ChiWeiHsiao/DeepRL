@@ -12,6 +12,7 @@ directory = 'models/{}'.format(MODEL_ID)
 
 # HyperParameter
 DISCOUNT = 0.99
+LEARNING_RATE = 0.001
 REPLAY_MEMORY = 20000
 BATCH_SIZE = 32
 N_EPISODES = 100
@@ -96,7 +97,7 @@ class DeepQ():
 
         y = tf.placeholder("float", [None])
         cost = tf.reduce_mean(tf.square(y - max_action_Q))
-        train_step = tf.train.AdamOptimizer(learning_rate=1e-6).minimize(cost)
+        train_step = tf.train.AdamOptimizer(LEARNING_RATE).minimize(cost)
 
         # Emulate and store trainsitions into replay_memory
         game = atari.Game('AirRaid-v0')

@@ -15,21 +15,23 @@ MODEL_ID = 'replay-1'
 directory = 'models/{}'.format(MODEL_ID)
 
 # HyperParameter
+SKIP_FRAMES = 1 #4
 DISCOUNT = 0.99
+LEARNING_RATE = 0.0001
 REPLAY_MEMORY = 20000
 BATCH_SIZE = 32
-N_EPISODES = 100
+N_EPISODES = 5000
 BEFORE_TRAIN = 10000
 # annealing for exploration probability
 INIT_EPSILON = 1
 FINAL_EPSILON = 0.1
-EXPLORE_TIME = 10000
+EXPLORE_TIME = 20000
 
 
 # tensorflow Wrapper
 def conv(in_tensor, out_channel, kernel_size, stide_size):
-    biases_initializer = tf.constant_initializer(0.01)
-    weights_initializer = tf.truncated_normal_initializer(mean=0, stddev = 0.01)
+    biases_initializer = tf.constant_initializer(0.1)
+    weights_initializer = tf.random_normal_initializer(mean=0, stddev = 0.0001) #tf.contrib.layers.xavier_initializer(uniform=True)
     conv = tf.contrib.layers.conv2d(in_tensor, out_channel, kernel_size=kernel_size, stride=stide_size, activation_fn=None, biases_initializer=biases_initializer, weights_initializer=weights_initializer, padding='SAME')
     return tf.nn.relu(conv)
 
@@ -44,7 +46,7 @@ def fully_connect(in_tensor, n_out):
     biases_initializer = tf.constant_initializer(0.01)
     weights_initializer = tf.truncated_normal_initializer(mean=0, stddev = 0.01)
     fc = tf.contrib.layers.fully_connected(in_tensor, n_out, activation_fn=None, biases_initializer=biases_initializer, weights_initializer=weights_initializer, trainable=True)
-    return tf.nn.relu(fc)
+    return fc
 
 
 class DeepQ():
@@ -61,6 +63,7 @@ class DeepQ():
         self.replay_memory = deque(maxlen=REPLAY_MEMORY)
         self.record = {'reward': [], 'survival_time': []}
 
+
     def approx_Q_network(self):
         x = tf.placeholder('float', [None, self.IMG_WIDTH, self.IMG_HEIGHT, self.IMG_CHANNEL])
         conv1 = conv(x, out_channel=32, kernel_size=8, stide_size=4)
@@ -70,8 +73,8 @@ class DeepQ():
         conv3 = conv(pool2, out_channel=64, kernel_size=3, stide_size=1)
         pool3 = maxpool(conv3, kernel_size=2, stide_size=2)
         flatten = tf.contrib.layers.flatten(pool3)
-        fc1 = fully_connect(flatten, 256)
-        output_Q = fully_connect(fc1, self.N_ACTIONS)
+        fc1 = tf.nn.relu(fully_connect(flatten, 256))
+        output_Q = tf.nn.softmax(fully_connect(fc1, self.N_ACTIONS))
         return x, output_Q
 
     def train_network(self, sess):
@@ -81,10 +84,10 @@ class DeepQ():
         max_action_Q = tf.reduce_max(output_Q, reduction_indices=[1])
         y = tf.placeholder("float", [None])
         cost = tf.reduce_mean(tf.square(y - max_action_Q))
-        train_step = tf.train.AdamOptimizer(learning_rate=1e-6).minimize(cost)
+        train_step = tf.train.AdamOptimizer(LEARNING_RATE).minimize(cost)
 
         # Emulate and store trainsitions into replay_memory
-        game = atari.Game('AirRaid-v0')
+        game = atari.Game('Breakout-v0')  #AirRaid-v0 #Enduro-v0
         state_t = game.initial_state()
         start_train_flag = False
         saver = tf.train.Saver()
@@ -99,15 +102,18 @@ class DeepQ():
                 # Emulate and store trainsitions into replay_memory
                 if(self.explore()):
                     action_t = game.random_action()
+                    #print(action_t, end='\' ')
                 else:
                     action_t = max_action.eval(feed_dict={x: np.reshape(state_t, (1,80,80,4))})[0]
-                state_t1, reward_t, terminal, info = game.step(action_t)  # Execute the chosen action in emulator
+                    print(action_t, end=' ')
+                for i in range(SKIP_FRAMES):
+                    state_t1, reward_t, terminal, info = game.step(action_t)  # Execute the chosen action in emulator
                 self.store_to_replay_memory(state_t, action_t, reward_t, state_t1, terminal)
                 sum_reward += reward_t
                 state_t = state_t1
                 if terminal:
                     state_t = game.initial_state()
-                t += 1
+                t += SKIP_FRAMES
                 # Train the approx_Q_network
                 if len(self.replay_memory) >= BEFORE_TRAIN:
                     if not start_train_flag:
@@ -127,7 +133,7 @@ class DeepQ():
                 
             self.record['reward'].append(sum_reward)
             self.record['survival_time'].append(t)
-            print('Episode {:3d}: sum of reward={:10.2f}, survival time ={:8d}'.format(episode, sum_reward, t))
+            print('\nEpisode {:3d}: sum of reward={:10.2f}, survival time ={:8d}'.format(episode, sum_reward, t))
             print('{:.2f} MB, replay memory size {:d}'.format(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1000, len(self.replay_memory)))
             self.global_time += t
 
@@ -140,11 +146,11 @@ class DeepQ():
             json.dump(self.record, f, indent=1)
 
     def explore(self):
-        if self.global_time <= BEFORE_TRAIN:
+        if self.global_time <= SKIP_FRAMES*BEFORE_TRAIN:
             return True
-        elif (self.global_time - BEFORE_TRAIN) < EXPLORE_TIME:
+        elif (self.global_time - SKIP_FRAMES*BEFORE_TRAIN) < EXPLORE_TIME:
             self.epsilon -= (INIT_EPSILON - FINAL_EPSILON) / EXPLORE_TIME
-        elif (self.global_time - BEFORE_TRAIN) ==  EXPLORE_TIME:
+        elif (self.global_time - SKIP_FRAMES*BEFORE_TRAIN) ==  EXPLORE_TIME:
             print('------------------ Stop Annealing. Probability to explore = {:f} ------------------'.format(FINAL_EPSILON))
         return random.random() < self.epsilon
 
