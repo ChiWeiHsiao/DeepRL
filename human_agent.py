@@ -1,10 +1,10 @@
 import sys, gym
 import time
-import atari_game_wrapper as atari
+import game_wrapper
 from collections import deque
 import numpy as np
 
-game = atari.Game('Breakout-v0')
+game = game_wrapper.Game('CartPole-v0', histoy_length=3, render=True)
 ACTIONS = game.env.action_space.n
 SKIP_CONTROL = 0    
 human_agent_action = 0
@@ -50,6 +50,7 @@ def play():
             action_t = human_agent_action
             skip = SKIP_CONTROL
             state_t1, reward_t, terminal, info = game.step(action_t)  # Execute the chosen action in emulator
+            print(reward_t, end=', ')
             state_t1 = np.stack([state_t1], axis=0)
             if t == 0:
                 store_state_t, store_action_t, store_reward_t, store_state_t1, store_terminal = state_t, [action_t], [reward_t], state_t1, [terminal]
@@ -74,7 +75,6 @@ def play():
     return store_state_t, np.array(store_action_t), np.array(store_reward_t), store_state_t1, np.array(store_terminal)
 
 def store_human_transition(outfile, max_length):
-    #game = atari.Game('Breakout-v0')
     store_state_t, store_action_t, store_reward_t, store_state_t1, store_terminal = [], [], [], [], []
     first = True
     store_terminal = np.array([])
@@ -100,5 +100,5 @@ if __name__ == '__main__':
     print("ACTIONS={}".format(ACTIONS))
     print("Press keys 1 2 3 ... to take actions 1 2 3 ...")
     print("No keys pressed is taking action 0")
-    store_human_transition(outfile='human_transitions', max_length = 300)
+    store_human_transition(outfile='human_transitions_CartPole_3', max_length = 400)
 
