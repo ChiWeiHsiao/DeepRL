@@ -32,9 +32,6 @@ class Game():
         # Prepare 'histoy_length-1' observations in buffer
         for i in range(self.histoy_length-1):
             self.state_buffer.append(observation)
-        print('ori observation:', len(observation))
-        print('observation_reshaped:', observation_reshaped.shape)
-        print('state:', state.shape)
         return state
 
     def step(self, action):
@@ -46,13 +43,15 @@ class Game():
         if self.render:
             self.env.render()
         observation_t1, reward, terminal_t1, info = self.env.step(action)
-        previous_observations = np.array(self.state_buffer) #(3, 4)
+        reward = abs(observation_t1[0] - (-0.5))
+        previous_observations = np.array(self.state_buffer)
         state_t1 = np.empty((self.histoy_length, self.n_observation))
         for i in range(previous_observations.shape[0]):
             state_t1[i, ...] = previous_observations[i]
         state_t1[self.histoy_length-1, ...] = observation_t1
         # Pop the oldest observation, add the current observation to the queue
-        self.state_buffer.popleft()
+        if len(self.state_buffer) >= 1:
+            self.state_buffer.popleft()
         self.state_buffer.append(observation_t1)
 
         return state_t1, reward, terminal_t1, info
