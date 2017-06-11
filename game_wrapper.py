@@ -6,13 +6,13 @@ from collections import deque
 
 
 class Game():
-    def __init__(self, game_name, render=False):
+    def __init__(self, game_name, histoy_length, render=False):
         self.env =  gym.make(game_name)
         #self.env = wrappers.Monitor(self.env, 'records/atari-experiment-1')
         self.render = render
         self.n_actions = self.env.action_space.n
-        self.n_observation = 2
-        self.histoy_length = 2  # One state contains 'histoy_length' observations
+        self.n_observation = len(self.env.observation_space.high)
+        self.histoy_length = histoy_length  # One state contains 'histoy_length' observations
         self.state_buffer = deque() # Buffer keep 'histoy_length-1' observations
 
     def initial_state(self):

@@ -15,17 +15,18 @@ MODEL_ID = 'replay-1'
 directory = 'models/{}'.format(MODEL_ID)
 
 # HyperParameter
+HISTORY_LENGTH = 3
 SKIP_FRAMES = 1 #4
 DISCOUNT = 0.99
-LEARNING_RATE = 0.0001
-REPLAY_MEMORY = 2000
+LEARNING_RATE = 0.001
+REPLAY_MEMORY = 10000
 BATCH_SIZE = 32
 N_EPISODES = 1000
-BEFORE_TRAIN = 1000
+BEFORE_TRAIN = 5000
 # annealing for exploration probability
 INIT_EPSILON = 1
 FINAL_EPSILON = 0.1
-EXPLORE_TIME = 2000
+EXPLORE_TIME = int(N_EPISODES / 5)
 
 
 # tensorflow Wrapper
@@ -37,14 +38,16 @@ def fully_connect(in_tensor, n_out):
 
 
 class DeepQ():
-    def __init__(self, N_OBSERVATIONS, N_HISTORY_LENGTH, N_ACTIONS, N_EPISODES, DISCOUNT, render):
+    def __init__(self, N_HISTORY_LENGTH, N_EPISODES, DISCOUNT, game_name, render):
         # init replay memory
-        self.N_OBSERVATIONS = N_OBSERVATIONS
+        self.game_name = game_name
+        self.render = render
         self.N_HISTORY_LENGTH = N_HISTORY_LENGTH
-        self.N_ACTIONS = N_ACTIONS
+        self.game = game_wrapper.Game(self.game_name, self.N_HISTORY_LENGTH, self.render)
+        self.N_OBSERVATIONS = len(self.game.env.observation_space.high)
+        self.N_ACTIONS = self.game.env.action_space.n
         self.N_EPISODES = N_EPISODES
         self.DISCOUNT = DISCOUNT
-        self.render = render
         self.global_time = 0
         self.epsilon = INIT_EPSILON
         self.replay_memory = deque(maxlen=REPLAY_MEMORY)
@@ -69,8 +72,7 @@ class DeepQ():
         train_step = tf.train.AdamOptimizer(LEARNING_RATE).minimize(cost)
 
         # Emulate and store trainsitions into replay_memory
-        game = game_wrapper.Game('MountainCar-v0', self.render)
-        state_t = game.initial_state()
+        state_t = self.game.initial_state()
         start_train_flag = False
         saver = tf.train.Saver()
         init_op = tf.global_variables_initializer()
@@ -83,18 +85,18 @@ class DeepQ():
             while not terminal:
                 # Emulate and store trainsitions into replay_memory
                 if(self.explore()):
-                    action_t = game.random_action()
+                    action_t = self.game.random_action()
                     #print(action_t, end='\' ')
                 else:
                     action_t = max_action.eval(feed_dict={x: np.reshape(state_t, (1, self.N_HISTORY_LENGTH, self.N_OBSERVATIONS))})[0]
                     print(action_t, end=' ')
                 for i in range(SKIP_FRAMES):
-                    state_t1, reward_t, terminal, info = game.step(action_t)  # Execute the chosen action in emulator
+                    state_t1, reward_t, terminal, info = self.game.step(action_t)  # Execute the chosen action in emulator
                 self.store_to_replay_memory(state_t, action_t, reward_t, state_t1, terminal)
                 sum_reward += reward_t
                 state_t = state_t1
                 if terminal:
-                    state_t = game.initial_state()
+                    state_t = self.game.initial_state()
                 t += SKIP_FRAMES
                 # Train the approx_Q_network
                 if len(self.replay_memory) >= BEFORE_TRAIN:
@@ -145,6 +147,6 @@ class DeepQ():
 
 if __name__ == '__main__':
     sess = tf.InteractiveSession()
-    dqn = DeepQ(2, 2, 3, N_EPISODES, DISCOUNT, False)
+    dqn = DeepQ(HISTORY_LENGTH, N_EPISODES, DISCOUNT, 'MountainCar-v0', False)
     dqn.train_network(sess)
 
