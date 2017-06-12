@@ -11,19 +11,25 @@ import resource
 import os
 import json
 
-MODEL_ID = 'replay-car'
+# Record & model filename to save
+MODEL_ID = 'double-car'
 directory = 'models/{}'.format(MODEL_ID)
-
+# Specify game
+GAME_NAME = 'MountainCar-v0'
+RNEDER = False
+N_EPISODES = 1000
 # HyperParameter
-HISTORY_LENGTH = 3
+HISTORY_LENGTH = 2
 SKIP_FRAMES = 1 #4
 DISCOUNT = 0.9 #0.99
 LEARNING_RATE = 0.001
 REPLAY_MEMORY = 3000
-BATCH_SIZE = 32
-N_EPISODES = 200
 BEFORE_TRAIN = 500
-# annealing for exploration probability
+BATCH_SIZE = 32
+# Use human player transition or not
+human_transitions_filename = 'car_human_transitions.npz'
+n_human_transitions_used = 0 #int(REPLAY_MEMORY*0.5))
+# Annealing for exploration probability
 INIT_EPSILON = 1
 FINAL_EPSILON = 0.1
 EXPLORE_TIME = 5000
@@ -69,7 +75,7 @@ class DeepQ():
         x, output_Q = self.approx_Q_network()  # output_Q: (batch, N_ACTIONS)
         max_action = tf.argmax(output_Q, axis=1)
         max_action_Q = tf.reduce_max(output_Q, reduction_indices=[1])
-        y = tf.placeholder("float", [None])
+        y = tf.placeholder('float', [None])
         cost = tf.reduce_mean(tf.square(y - max_action_Q))
         train_step = tf.train.RMSPropOptimizer(LEARNING_RATE).minimize(cost)
 
@@ -77,6 +83,8 @@ class DeepQ():
         state_t = self.game.initial_state()
         start_train_flag = False
         saver = tf.train.Saver()
+        #saver.restore(sess, 'models/{}/model.ckpt'.format(MODEL_ID))
+        #print('model restore.')
         init_op = tf.global_variables_initializer()
         init_op.run()
 
@@ -167,7 +175,7 @@ class DeepQ():
 
 if __name__ == '__main__':
     sess = tf.InteractiveSession()
-    dqn = DeepQ(HISTORY_LENGTH, N_EPISODES, DISCOUNT, EXPLORE_TIME, 'MountainCar-v0', render=False,
-             human_transitions_file='car_human_transitions.npz', n_human_transitions=int(REPLAY_MEMORY*0.5))
+    dqn = DeepQ(HISTORY_LENGTH, N_EPISODES, DISCOUNT, EXPLORE_TIME, GAME_NAME, render=RNEDER,
+             human_transitions_file=human_transitions_filename, n_human_transitions=n_human_transitions_used)
     dqn.train_network(sess)
 

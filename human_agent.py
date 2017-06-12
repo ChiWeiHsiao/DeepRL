@@ -4,7 +4,7 @@ import game_wrapper
 from collections import deque
 import numpy as np
 
-game = game_wrapper.Game('CartPole-v0', histoy_length=3, render=True)
+game = game_wrapper.Game('MountainCar-v0', histoy_length=3, render=True)
 ACTIONS = game.env.action_space.n
 SKIP_CONTROL = 0    
 human_agent_action = 0
@@ -100,5 +100,5 @@ if __name__ == '__main__':
     print("ACTIONS={}".format(ACTIONS))
     print("Press keys 1 2 3 ... to take actions 1 2 3 ...")
     print("No keys pressed is taking action 0")
-    store_human_transition(outfile='human_transitions_CartPole_3', max_length = 400)
+    store_human_transition(outfile='human_transitions', max_length = 400)
 

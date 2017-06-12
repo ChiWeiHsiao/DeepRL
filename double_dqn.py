@@ -1,4 +1,3 @@
-# new
 import tensorflow as tf
 import numpy as np
 from collections import deque 
@@ -8,20 +7,26 @@ import resource
 import os
 import json
 
+# Record & model filename to save
 MODEL_ID = 'double-car'
 directory = 'models/{}'.format(MODEL_ID)
-
+# Specify game
+GAME_NAME = 'MountainCar-v0'
+RNEDER = False
+N_EPISODES = 1000
 # HyperParameter
+COPY_STEPS = 4
 HISTORY_LENGTH = 2
 SKIP_FRAMES = 1 #4
 DISCOUNT = 0.9 #0.99
 LEARNING_RATE = 0.001
 REPLAY_MEMORY = 3000
-BATCH_SIZE = 32
-N_EPISODES = 1000
 BEFORE_TRAIN = 500
-COPY_STEP = 4
-# annealing for exploration probability
+BATCH_SIZE = 32
+# Use human player transition or not
+human_transitions_filename = 'car_human_transitions.npz'
+n_human_transitions_used = 0 #int(REPLAY_MEMORY*0.5))
+# Annealing for exploration probability
 INIT_EPSILON = 1
 FINAL_EPSILON = 0.1
 EXPLORE_TIME = 5000
@@ -29,7 +34,7 @@ EXPLORE_TIME = 5000
 
 # tensorflow Wrapper
 def weight_variable(shape):
-    initial = tf.truncated_normal(shape, stddev=0.01)
+    initial = tf.random_normal(shape, stddev=0.1)
     return tf.Variable(initial) 
 
 def bias_variable(shape):
@@ -38,7 +43,7 @@ def bias_variable(shape):
 
 
 class DeepQ():
-    def __init__(self, N_HISTORY_LENGTH, N_EPISODES, DISCOUNT, EXPLORE_TIME, game_name, render=False, human_transitions_file=None, n_human_transitions=0):
+    def __init__(self, N_HISTORY_LENGTH, N_EPISODES, DISCOUNT, COPY_STEP, EXPLORE_TIME, game_name, render=False, human_transitions_file=None, n_human_transitions=0):
         self.game_name = game_name
         self.render = render
         self.N_HISTORY_LENGTH = N_HISTORY_LENGTH
@@ -225,7 +230,7 @@ class DeepQ():
 
 if __name__ == '__main__':
     sess = tf.InteractiveSession()
-    dqn = DeepQ(HISTORY_LENGTH, N_EPISODES, DISCOUNT, EXPLORE_TIME, 'MountainCar-v0', render=False,
-             human_transitions_file='car_human_transitions.npz', n_human_transitions=0)#int(REPLAY_MEMORY*0.5))
+    dqn = DeepQ(HISTORY_LENGTH, N_EPISODES, DISCOUNT, COPY_STEPS, EXPLORE_TIME, GAME_NAME, render=RNEDER,
+             human_transitions_file=human_transitions_filename, n_human_transitions=n_human_transitions_used)
     dqn.train_network(sess)
 
