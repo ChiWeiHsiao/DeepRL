@@ -14,7 +14,8 @@ class Game():
         self.n_observation = len(self.env.observation_space.high)
         self.histoy_length = histoy_length  # One state contains 'histoy_length' observations
         self.state_buffer = deque() # Buffer keep 'histoy_length-1' observations
-
+        self.show_game_info()
+        
     def initial_state(self):
         ''' Initialize game. Prepare initial state and state_buffer
         Reset the game
@@ -43,7 +44,11 @@ class Game():
         if self.render:
             self.env.render()
         observation_t1, reward, terminal_t1, info = self.env.step(action)
-        reward = abs(observation_t1[0] - (-0.5))
+        # Redefine reward
+        reward = abs(observation_t1[0] - (-0.5)) + abs(observation_t1[1]) # height + speed
+        if observation_t1[0] == -1.2: # punish if touch the edge
+            reward -= 20 
+
         previous_observations = np.array(self.state_buffer)
         state_t1 = np.empty((self.histoy_length, self.n_observation))
         for i in range(previous_observations.shape[0]):
@@ -64,6 +69,8 @@ class Game():
         ''' Show information about the game'''
         print('Action space: {}'.format(self.env.action_space))
         print('Observation space: {}'.format(self.env.observation_space))
+        print('Observation high: {}'.format(self.env.observation_space.high))
+        print('Observation low: {}'.format(self.env.observation_space.low))
 
 
 def example():
