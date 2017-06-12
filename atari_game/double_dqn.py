@@ -93,7 +93,7 @@ class DeepQ():
 
         target_x, target_output_Q = self.target_Q_network()
         target_max_action = tf.argmax(target_output_Q, axis=1)
-        target_max_action_Q = tf.reduce_max(output_Q, reduction_indices=[1])
+        target_max_action_Q = tf.reduce_max(target_output_Q, reduction_indices=[1])
 
         y = tf.placeholder("float", [None])
         cost = tf.reduce_mean(tf.square(y - max_action_Q))
@@ -138,7 +138,7 @@ class DeepQ():
                         state_j1.append(transition[3])
                         terminal_j1.append(transition[4])
                     # the learned value for Q-learning
-                    y_j = np.where(terminal_j1, reward_j, reward_j + self.DISCOUNT * target_max_action_Q.eval(feed_dict={x: state_j1})[0] )
+                    y_j = np.where(terminal_j1, reward_j, reward_j + self.DISCOUNT * target_max_action_Q.eval(feed_dict={target_x: state_j1})[0] )
                     train_step.run(feed_dict={x:state_j, y:y_j})
 
                     if t % self.COPY_STEP == 0:
@@ -160,7 +160,7 @@ class DeepQ():
 
     def test(self, sess):
         saver = tf.train.Saver()
-        model_name = '%s/model' %directory  #'models/final_double-101915'
+        model_name = '%s/model' %directory
         saver.restore(sess, model_name)
         print('Model restored from {}'.format(model_name))
         x, output_Q = self.approx_Q_network()  # output_Q: (batch, N_ACTIONS)
