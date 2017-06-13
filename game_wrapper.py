@@ -15,7 +15,7 @@ class Game():
         self.histoy_length = histoy_length  # One state contains 'histoy_length' observations
         self.state_buffer = deque() # Buffer keep 'histoy_length-1' observations
         self.show_game_info()
-        
+
     def initial_state(self):
         ''' Initialize game. Prepare initial state and state_buffer
         Reset the game
@@ -29,7 +29,7 @@ class Game():
         observation_reshaped = np.stack([observation], axis=0)
         state = observation_reshaped
         for i in range(self.histoy_length-1):
-            state = np.concatenate((state, observation_reshaped), axis=0) 
+            state = np.concatenate((state, observation_reshaped), axis=0)
         # Prepare 'histoy_length-1' observations in buffer
         for i in range(self.histoy_length-1):
             self.state_buffer.append(observation)
@@ -47,7 +47,7 @@ class Game():
         # Redefine reward
         reward = abs(observation_t1[0] - (-0.5)) + abs(observation_t1[1]) # height + speed
         if observation_t1[0] == -1.2: # punish if touch the edge
-            reward -= 20 
+            reward -= 20
 
         previous_observations = np.array(self.state_buffer)
         state_t1 = np.empty((self.histoy_length, self.n_observation))
@@ -90,5 +90,3 @@ def example():
 
 if __name__ == '__main__':
     example()
-
-

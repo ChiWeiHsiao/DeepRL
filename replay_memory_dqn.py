@@ -4,12 +4,16 @@ NIPS 2013 Paper: https://arxiv.org/pdf/1312.5602.pdf)
 '''
 import tensorflow as tf
 import numpy as np
-from collections import deque 
-import game_wrapper
+from collections import deque
 import random
-import resource
 import os
 import json
+import game_wrapper
+from memory import Memory
+try:
+    import resource
+except:
+    pass
 
 # Record & model filename to save
 MODEL_ID = 'double-car'
@@ -33,7 +37,14 @@ n_human_transitions_used = 0 #int(REPLAY_MEMORY*0.5))
 INIT_EPSILON = 1
 FINAL_EPSILON = 0.1
 EXPLORE_TIME = 5000
-
+# Prioritized DQN configuration
+PRIDQN_ENABLE = True
+PRIDQN_CONFIG = {
+    'epsilon': 0.01,              # small amount to avoid zero priority
+    'alpha': 0.6,                 # [0~1] convert the importance of TD error to priority
+    'beta': 0.4,                  # importance-sampling, from initial value increasing to 1
+    'beta_increment_per_sampling': 0.001
+}
 
 # tensorflow Wrapper
 def fully_connect(in_tensor, n_out):
@@ -41,7 +52,6 @@ def fully_connect(in_tensor, n_out):
     weights_initializer = tf.random_normal_initializer(mean=0, stddev = 0.1)
     fc = tf.contrib.layers.fully_connected(in_tensor, n_out, activation_fn=None, biases_initializer=biases_initializer, weights_initializer=weights_initializer, trainable=True)
     return fc
-
 
 class DeepQ():
     def __init__(self, N_HISTORY_LENGTH, N_EPISODES, DISCOUNT, EXPLORE_TIME, game_name, render=False, human_transitions_file=None, n_human_transitions=0):
@@ -56,12 +66,13 @@ class DeepQ():
         self.EXPLORE_TIME = EXPLORE_TIME
         self.global_time = 0
         self.epsilon = INIT_EPSILON
-        self.replay_memory = deque(maxlen=REPLAY_MEMORY)
+        # self.replay_memory = deque(maxlen=REPLAY_MEMORY)
         self.record = {'reward': [], 'time_used': []}
         self.human_transitions_file = human_transitions_file
         self.n_human_transitions = n_human_transitions
         if self.n_human_transitions > 0:
             self.load_human_transitions()
+        self.replay_memory = Memory(capacity=REPLAY_MEMORY, enable_pri=PRIDQN_ENABLE, **PRIDQN_CONFIG)
 
     def approx_Q_network(self):
         x = tf.placeholder('float', [None, self.N_HISTORY_LENGTH, self.N_OBSERVATIONS])
@@ -76,7 +87,12 @@ class DeepQ():
         max_action = tf.argmax(output_Q, axis=1)
         max_action_Q = tf.reduce_max(output_Q, reduction_indices=[1])
         y = tf.placeholder('float', [None])
-        cost = tf.reduce_mean(tf.square(y - max_action_Q))
+        if PRIDQN_ENABLE:
+            ISWeights = tf.placeholder(tf.float32, [None, 1])
+            abs_errors = tf.abs(y - max_action_Q)
+            cost = tf.reduce_mean(ISWeights * tf.squared_difference(y, max_action_Q))
+        else:
+            cost = tf.reduce_mean(tf.squared_difference(y, max_action_Q))
         train_step = tf.train.RMSPropOptimizer(LEARNING_RATE).minimize(cost)
 
         # Emulate and store trainsitions into replay_memory
@@ -102,7 +118,9 @@ class DeepQ():
                     #print(action_t, end=' ')
                 for i in range(SKIP_FRAMES):
                     state_t1, reward_t, terminal, info = self.game.step(action_t)  # Execute the chosen action in emulator
-                self.store_to_replay_memory(state_t, action_t, reward_t, state_t1, terminal)
+
+                self.replay_memory.store([state_t, action_t, reward_t, state_t1, terminal])
+                # self.store_to_replay_memory(state_t, action_t, reward_t, state_t1, terminal)
                 sum_reward += reward_t
                 state_t = state_t1
                 if terminal:
@@ -113,7 +131,9 @@ class DeepQ():
                     if not start_train_flag:
                         start_train_flag = True
                         print('------------------ Start Training ------------------')
-                    transition_batch = random.sample(self.replay_memory, BATCH_SIZE)
+                    # transition_batch = random.sample(self.replay_memory, BATCH_SIZE)
+                    transition_batch, batch_idx, weights = self.replay_memory.sample(BATCH_SIZE)
+
                     state_j, action_j, reward_j, state_j1, terminal_j1  = [], [], [], [], []
                     for transition in transition_batch:
                         state_j.append(transition[0])
@@ -121,15 +141,29 @@ class DeepQ():
                         reward_j.append(transition[2])
                         state_j1.append(transition[3])
                         terminal_j1.append(transition[4])
+
                     # the learned value for Q-learning
+                    # print(state_j1)
                     y_j = np.where(terminal_j1, reward_j, reward_j + self.DISCOUNT * max_action_Q.eval(feed_dict={x: state_j1})[0] )
                     #this_run_cost = cost.eval(feed_dict={x:state_j, y:y_j})
                     #print('cost=',this_run_cost)
-                    train_step.run(feed_dict={x:state_j, y:y_j})
-                
+
+                    if PRIDQN_ENABLE:
+                        _, errors, c = sess.run([train_step, abs_errors, cost],
+                                                     feed_dict={x: state_j,
+                                                                y: y_j,
+                                                                ISWeights: weights})
+                        for i in range(len(batch_idx)):  # update priority
+                            idx = batch_idx[i]
+                            self.replay_memory.update(idx, errors[i])
+                    else:
+                        _, c = sess.run([train_step, cost],
+                                                     feed_dict={x: state_j,
+                                                                y: y_j })
+
             self.record['reward'].append(sum_reward)
             self.record['time_used'].append(t)
-            print('\nEpisode {:3d}: sum of reward={:10.2f}, time used={:8d}\n'.format(episode, sum_reward, t))
+            print('\nEpisode {:3d}: sum of reward={:10.2f}, time used={:8d}'.format(episode, sum_reward, t))
             #print('{:.2f} MB, replay memory size {:d}'.format(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1000, len(self.replay_memory)))
             self.global_time += t
 
@@ -151,12 +185,6 @@ class DeepQ():
             self.EXPLORE_TIME -= 1
         return random.random() < self.epsilon
 
-    def store_to_replay_memory(self, state_t, action_t, reward_t, state_t1, terminal):
-        transition = [state_t, action_t, reward_t, state_t1, terminal]
-        self.replay_memory.append(transition)
-        if len(self.replay_memory) > REPLAY_MEMORY:
-            self.replay_memory.popleft()
-
     def load_human_transitions(self):
         data = np.load(self.human_transitions_file)
         print('There are {} human transitions available, and {} are used'.format(data['state_t'].shape[0], self.n_human_transitions))
@@ -169,13 +197,8 @@ class DeepQ():
             transition = [state_t[i], action_t[i], reward_t[i], state_t1[i], terminal[i]]
             self.replay_memory.append(transition)
 
-
-
-
-
 if __name__ == '__main__':
     sess = tf.InteractiveSession()
     dqn = DeepQ(HISTORY_LENGTH, N_EPISODES, DISCOUNT, EXPLORE_TIME, GAME_NAME, render=RNEDER,
              human_transitions_file=human_transitions_filename, n_human_transitions=n_human_transitions_used)
     dqn.train_network(sess)
-

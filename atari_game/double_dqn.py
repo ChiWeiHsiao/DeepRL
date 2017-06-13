@@ -1,11 +1,15 @@
 import tensorflow as tf
 import numpy as np
-from collections import deque 
+from collections import deque
 import atari_game_wrapper as atari
 import random
-import resource
 import os
 import json
+from memory import Memory
+try:
+    import resource
+except:
+    pass
 
 MODEL_ID = 'double1'
 directory = 'models/{}'.format(MODEL_ID)
@@ -21,12 +25,19 @@ BEFORE_TRAIN = 10000
 INIT_EPSILON = 1
 FINAL_EPSILON = 0.1
 EXPLORE_TIME = 10000
-
+# Prioritized DQN configuration
+PRIDQN_ENABLE = False
+PRIDQN_CONFIG = {
+    'epsilon': 0.01,              # small amount to avoid zero priority
+    'alpha': 0.6,                 # [0~1] convert the importance of TD error to priority
+    'beta': 0.4,                  # importance-sampling, from initial value increasing to 1
+    'beta_increment_per_sampling': 0.001
+}
 
 # tensorflow Wrapper
 def weight_variable(shape):
     initial = tf.truncated_normal(shape, stddev=0.01)
-    return tf.Variable(initial) 
+    return tf.Variable(initial)
 
 def bias_variable(shape):
     initial = tf.fill(shape, 0.01)
@@ -56,7 +67,8 @@ class DeepQ():
         self.target_W, self.target_b = self.initialize_weights()
         self.global_time = 0
         self.epsilon = INIT_EPSILON
-        self.replay_memory = deque(maxlen=REPLAY_MEMORY)
+        # self.replay_memory = deque(maxlen=REPLAY_MEMORY)
+        self.replay_memory = Memory(capacity=REPLAY_MEMORY, enable_pri=PRIDQN_ENABLE, **PRIDQN_CONFIG)
         self.record = {'reward': [], 'survival_time': []}
 
     def approx_Q_network(self):
@@ -96,7 +108,13 @@ class DeepQ():
         target_max_action_Q = tf.reduce_max(target_output_Q, reduction_indices=[1])
 
         y = tf.placeholder("float", [None])
-        cost = tf.reduce_mean(tf.square(y - max_action_Q))
+        if PRIDQN_ENABLE:
+            ISWeights = tf.placeholder(tf.float32, [None, 1])
+            abs_errors = tf.abs(y - max_action_Q)
+            cost = tf.reduce_mean(ISWeights * tf.squared_difference(y, max_action_Q))
+        else:
+            cost = tf.reduce_mean(tf.squared_difference(y, max_action_Q))
+
         train_step = tf.train.AdamOptimizer(LEARNING_RATE).minimize(cost)
 
         # Emulate and store trainsitions into replay_memory
@@ -118,7 +136,7 @@ class DeepQ():
                 else:
                     action_t = max_action.eval(feed_dict={x: np.reshape(state_t, (1,80,80,4))})[0]
                 state_t1, reward_t, terminal, info = game.step(action_t)  # Execute the chosen action in emulator
-                self.store_to_replay_memory(state_t, action_t, reward_t, state_t1, terminal)
+                self.replay_memory.store([state_t, action_t, reward_t, state_t1, terminal])
                 sum_reward += reward_t
                 state_t = state_t1
                 if terminal:
@@ -129,7 +147,8 @@ class DeepQ():
                     if not start_train_flag:
                         start_train_flag = True
                         print('------------------ Start Training ------------------')
-                    transition_batch = random.sample(self.replay_memory, BATCH_SIZE)
+
+                    transition_batch, batch_idx, weights = self.replay_memory.sample(BATCH_SIZE)
                     state_j, action_j, reward_j, state_j1, terminal_j1  = [], [], [], [], []
                     for transition in transition_batch:
                         state_j.append(transition[0])
@@ -139,7 +158,19 @@ class DeepQ():
                         terminal_j1.append(transition[4])
                     # the learned value for Q-learning
                     y_j = np.where(terminal_j1, reward_j, reward_j + self.DISCOUNT * target_max_action_Q.eval(feed_dict={target_x: state_j1})[0] )
-                    train_step.run(feed_dict={x:state_j, y:y_j})
+                    if PRIDQN_ENABLE:
+                        _, errors, c = sess.run([train_step, abs_errors, cost],
+                                                     feed_dict={x: state_j,
+                                                                y: y_j,
+                                                                ISWeights: weights})
+                        for i in range(len(batch_idx)):  # update priority
+                            idx = batch_idx[i]
+                            self.replay_memory.update(idx, errors[i])
+                    else:
+                        _, c = sess.run([train_step, cost],
+                                                     feed_dict={x: state_j,
+                                                                y: y_j })
+                    # train_step.run(feed_dict={x:state_j, y:y_j})
 
                     if t % self.COPY_STEP == 0:
                         self.copy_weights()
@@ -243,4 +274,3 @@ if __name__ == '__main__':
     dqn = DeepQ(80, 80, 4, 6, N_EPISODES, DISCOUNT)
     dqn.train(sess)
     #dqn.test(sess)
-
