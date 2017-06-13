@@ -44,11 +44,13 @@ class Game():
         if self.render:
             self.env.render()
         observation_t1, reward, terminal_t1, info = self.env.step(action)
+        if terminal_t1:
+            reward = 10
         # Redefine reward
-        reward = abs(observation_t1[0] - (-0.5)) + abs(observation_t1[1]) # height + speed
-        if observation_t1[0] == -1.2: # punish if touch the edge
-            reward -= 20
-
+        #reward = abs(observation_t1[0] - (-0.5)) + abs(observation_t1[1]) # height + speed
+        #if observation_t1[0] == -1.2: # punish if touch the edge
+        #    reward -= 20
+        
         previous_observations = np.array(self.state_buffer)
         state_t1 = np.empty((self.histoy_length, self.n_observation))
         for i in range(previous_observations.shape[0]):
@@ -74,7 +76,7 @@ class Game():
 
 
 def example():
-    game = Game('MountainCar-v0')
+    game = Game('MountainCar-v0', 1)
     game.show_game_info()
     init_state = game.initial_state()
     game_over = False
