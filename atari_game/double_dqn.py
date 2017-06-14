@@ -22,7 +22,7 @@ BATCH_SIZE = 32
 N_EPISODES = 100
 BEFORE_TRAIN = 10000
 # annealing for exploration probability
-INIT_EPSILON = 1
+INIT_EPSILON = 1  # If don't want to explore, set to 0.1
 FINAL_EPSILON = 0.1
 EXPLORE_STEPS = 10000
 # Prioritized DQN configuration
@@ -203,10 +203,11 @@ class DeepQ():
 
         n_episodes = 20
         game.env.render()
+        total_reward = total_survival_time = 0
         for episode in range(n_episodes):
             terminal = False
-            total_reward = sum_reward = 0
-            total_survival_time = survival_time = 0
+            sum_reward = 0
+            survival_time = 0
             while not terminal:
                 action_t = max_action.eval(feed_dict={x: np.reshape(state_t, (1,80,80,4))})[0]
                 print(action_t, end='')
@@ -219,7 +220,7 @@ class DeepQ():
             print('Run {}: reward={:10.2f}, survival time ={:8d}'.format(episode, sum_reward, survival_time))
             total_reward += sum_reward
             total_survival_time += survival_time
-        print('Average: reward={:10.2f}, survival time ={:8.2f}'.format(n_episodes, total_reward/n_episodes, total_survival_time/n_episodes))
+        print('Average: reward={:10.2f}, time ={:8.2f}'.format(total_reward/n_episodes, total_survival_time/n_episodes))
 
 
 
@@ -273,4 +274,4 @@ if __name__ == '__main__':
     sess = tf.InteractiveSession()
     dqn = DeepQ(80, 80, 4, 6, N_EPISODES, DISCOUNT)
     dqn.train(sess)
-    #dqn.test(sess)
+    dqn.test(sess)

@@ -17,7 +17,7 @@ directory = 'models/{}'.format(MODEL_ID)
 # Specify game
 GAME_NAME = 'MountainCar-v0'
 RNEDER = False
-N_EPISODES = 1000
+N_EPISODES = 10#00
 REWARD_DEFINITION = 1 # 1: raw -1/10,  2: height and punish
 # HyperParameter
 COPY_STEPS = 4
@@ -185,36 +185,6 @@ class DeepQ():
         with open('record/{}.json'.format(MODEL_ID), 'w') as f:
             json.dump(self.record, f, indent=1)
 
-    def test(self, sess, n_episodes=10):
-        saver = tf.train.Saver()
-        model_name = '%s/model' %directory
-        saver.restore(sess, model_name)
-        print('Model restored from {}'.format(model_name))
-        x, output_Q = self.create_network()
-        max_action = tf.argmax(output_Q, axis=1)
-
-        state_t = game.initial_state()
-        max_action_Q = tf.reduce_max(output_Q, reduction_indices=[1])
-
-        self.game.env.render()
-        self.game.initial_state()
-        for episode in range(n_episodes):
-            terminal = False
-            total_reward = sum_reward = 0
-            total_survival_time = survival_time = 0
-            while not terminal:
-                action_t = max_action.eval(feed_dict={x: np.reshape(state_t, (1,80,80,4))})[0]
-                print(action_t, end='')
-                state_t1, reward_t, terminal, info = game.step(action_t)  # Execute the chosen action in emulator
-                sum_reward += reward_t
-                state_t = state_t1
-                if terminal:
-                    state_t = self.game.initial_state()
-                survival_time += 1
-            print('Run {}: reward={:10.2f}, survival time ={:8d}'.format(episode, sum_reward, survival_time))
-            total_reward += sum_reward
-            total_survival_time += survival_time
-        print('Average: reward={:10.2f}, survival time ={:8.2f}'.format(n_episodes, total_reward/n_episodes, total_survival_time/n_episodes))
 
     def explore(self):
         if self.global_time <= SKIP_FRAMES*BEFORE_TRAIN:
@@ -225,6 +195,40 @@ class DeepQ():
             print('------------------ Stop Annealing. Probability to explore = {:f} ------------------'.format(FINAL_EPSILON))
             self.EXPLORE_STEPS -= 1
         return random.random() < self.epsilon
+
+    def test(self, sess):
+        saver = tf.train.Saver()
+        model_name = '%s/model.ckpt' % directory
+        saver.restore(sess, model_name)
+        print('Model restored from {}'.format(model_name))
+        x, output_Q = self.create_network(self.W, self.b)
+        max_action = tf.argmax(output_Q, axis=1)
+
+        game = game_wrapper.Game(self.game_name, self.N_HISTORY_LENGTH, self.render)
+        state_t = game.initial_state()
+        max_action_Q = tf.reduce_max(output_Q, reduction_indices=[1])
+
+        n_episodes = 20
+        total_reward = total_survival_time = 0
+        for episode in range(n_episodes):
+            game.env.render()
+            terminal = False
+            sum_reward = 0
+            survival_time = 0
+            while not terminal:
+                action_t = max_action.eval(feed_dict={x: np.reshape(state_t, (1, self.N_HISTORY_LENGTH, self.N_OBSERVATIONS))})[0]
+                print(action_t, end='')
+                state_t1, reward_t, terminal, info = game.step(action_t)  # Execute the chosen action in emulator
+                sum_reward += reward_t
+                state_t = state_t1
+                if terminal:
+                    state_t = game.initial_state()
+                survival_time += 1
+            print('Run {}: reward={:5.2f}, time ={:3d}'.format(episode, sum_reward, survival_time))
+            total_reward += sum_reward
+            total_survival_time += survival_time
+        print('Average: reward={:5.2f}, time ={:3.2f}'.format(total_reward/n_episodes, total_survival_time/n_episodes))
+
 
     def load_human_transitions(self):
         data = np.load(self.human_transitions_file)
@@ -271,4 +275,5 @@ if __name__ == '__main__':
     sess = tf.InteractiveSession()
     dqn = DeepQ(HISTORY_LENGTH, N_EPISODES, DISCOUNT, COPY_STEPS, EXPLORE_STEPS, GAME_NAME, render=RNEDER,
              human_transitions_file=human_transitions_filename, n_human_transitions=n_human_transitions_used)
-    dqn.train_network(sess)
+    #dqn.train_network(sess)
+    dqn.test(sess)

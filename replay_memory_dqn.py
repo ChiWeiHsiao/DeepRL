@@ -20,8 +20,8 @@ MODEL_ID = 'double-car'
 directory = 'models/{}'.format(MODEL_ID)
 # Specify game
 GAME_NAME = 'MountainCar-v0'
-RNEDER = True
-N_EPISODES = 1000
+RNEDER = False
+N_EPISODES = 10#00
 REWARD_DEFINITION = 1 # 1: raw -1/10,  2: height and punish
 # HyperParameter
 HISTORY_LENGTH = 1
@@ -35,7 +35,7 @@ BATCH_SIZE = 32
 human_transitions_filename = 'car_human_transitions.npz'
 n_human_transitions_used = 0 #int(REPLAY_MEMORY*0.5))
 # Annealing for exploration probability
-INIT_EPSILON = 1  # if don't want to explore, set to 0.1
+INIT_EPSILON = 1  # If don't want to explore, set to 0.1
 FINAL_EPSILON = 0.1
 EXPLORE_STEPS = 5000
 # Prioritized DQN configuration
@@ -48,11 +48,13 @@ PRIDQN_CONFIG = {
 }
 
 # tensorflow Wrapper
-def fully_connect(in_tensor, n_out):
-    biases_initializer = tf.constant_initializer(0.01)
-    weights_initializer = tf.random_normal_initializer(mean=0, stddev = 0.1)
-    fc = tf.contrib.layers.fully_connected(in_tensor, n_out, activation_fn=None, biases_initializer=biases_initializer, weights_initializer=weights_initializer, trainable=True)
-    return fc
+def weight_variable(shape):
+    initial = tf.random_normal(shape, stddev=0.1)
+    return tf.Variable(initial)
+
+def bias_variable(shape):
+    initial = tf.fill(shape, 0.01)
+    return tf.Variable(initial)
 
 class DeepQ():
     def __init__(self, N_HISTORY_LENGTH, N_EPISODES, DISCOUNT, EXPLORE_STEPS, game_name, render=False, human_transitions_file=None, n_human_transitions=0):
@@ -73,18 +75,19 @@ class DeepQ():
         self.n_human_transitions = n_human_transitions
         if self.n_human_transitions > 0:
             self.load_human_transitions()
+        self.W, self.b = self.initialize_weights()
         self.replay_memory = Memory(capacity=REPLAY_MEMORY, enable_pri=PRIDQN_ENABLE, **PRIDQN_CONFIG)
 
-    def approx_Q_network(self):
+    def create_network(self, W, b):
         x = tf.placeholder('float', [None, self.N_HISTORY_LENGTH, self.N_OBSERVATIONS])
         flatten = tf.contrib.layers.flatten(x)
-        fc1 = tf.nn.relu(fully_connect(flatten, 20))
-        output_Q = tf.nn.softmax(fully_connect(fc1, self.N_ACTIONS))
+        fc1 = tf.nn.relu(tf.add(tf.matmul(flatten, W['f1']), b['f1']))
+        output_Q = tf.nn.softmax(tf.add(tf.matmul(fc1, W['f2']), b['f2']))
         return x, output_Q
 
     def train_network(self, sess):
         # Define cost function of network
-        x, output_Q = self.approx_Q_network()  # output_Q: (batch, N_ACTIONS)
+        x, output_Q = self.create_network(self.W, self.b)
         max_action = tf.argmax(output_Q, axis=1)
         max_action_Q = tf.reduce_max(output_Q, reduction_indices=[1])
         y = tf.placeholder('float', [None])
@@ -187,6 +190,39 @@ class DeepQ():
             self.EXPLORE_STEPS -= 1
         return random.random() < self.epsilon
 
+    def test(self, sess):
+        saver = tf.train.Saver()
+        model_name = '%s/model.ckpt' % directory
+        saver.restore(sess, model_name)
+        print('Model restored from {}'.format(model_name))
+        x, output_Q = self.create_network(self.W, self.b)
+        max_action = tf.argmax(output_Q, axis=1)
+
+        game = game_wrapper.Game(self.game_name, self.N_HISTORY_LENGTH, self.render)
+        state_t = game.initial_state()
+        max_action_Q = tf.reduce_max(output_Q, reduction_indices=[1])
+
+        n_episodes = 20
+        total_reward = total_survival_time = 0
+        for episode in range(n_episodes):
+            game.env.render()
+            terminal = False
+            sum_reward = 0
+            survival_time = 0
+            while not terminal:
+                action_t = max_action.eval(feed_dict={x: np.reshape(state_t, (1, self.N_HISTORY_LENGTH, self.N_OBSERVATIONS))})[0]
+                print(action_t, end='')
+                state_t1, reward_t, terminal, info = game.step(action_t)  # Execute the chosen action in emulator
+                sum_reward += reward_t
+                state_t = state_t1
+                if terminal:
+                    state_t = game.initial_state()
+                survival_time += 1
+            print('Run {}: reward={:5.2f}, time ={:3d}'.format(episode, sum_reward, survival_time))
+            total_reward += sum_reward
+            total_survival_time += survival_time
+        print('Average: reward={:5.2f}, time ={:3.2f}'.format(total_reward/n_episodes, total_survival_time/n_episodes))
+
     def load_human_transitions(self):
         data = np.load(self.human_transitions_file)
         print('There are {} human transitions available, and {} are used'.format(data['state_t'].shape[0], self.n_human_transitions))
@@ -198,6 +234,17 @@ class DeepQ():
         for i in range(self.n_human_transitions):
             transition = [state_t[i], action_t[i], reward_t[i], state_t1[i], terminal[i]]
             self.replay_memory.append(transition)
+
+    def initialize_weights(self):
+        weight = {
+            'f1': weight_variable([self.N_HISTORY_LENGTH*self.N_OBSERVATIONS, 20]),
+            'f2': weight_variable([20, self.N_ACTIONS]),
+        }
+        bias = {
+            'f1': bias_variable([20]),
+            'f2': bias_variable([self.N_ACTIONS]),
+        }
+        return weight, bias
 
     def redefine_reward(self, reward, state, terminal, version=1):
         if version == 1:
@@ -216,3 +263,4 @@ if __name__ == '__main__':
     dqn = DeepQ(HISTORY_LENGTH, N_EPISODES, DISCOUNT, EXPLORE_STEPS, GAME_NAME, render=RNEDER,
              human_transitions_file=human_transitions_filename, n_human_transitions=n_human_transitions_used)
     dqn.train_network(sess)
+    dqn.test(sess)
