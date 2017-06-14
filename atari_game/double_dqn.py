@@ -24,7 +24,7 @@ BEFORE_TRAIN = 10000
 # annealing for exploration probability
 INIT_EPSILON = 1
 FINAL_EPSILON = 0.1
-EXPLORE_TIME = 10000
+EXPLORE_STEPS = 10000
 # Prioritized DQN configuration
 PRIDQN_ENABLE = False
 PRIDQN_CONFIG = {
@@ -226,9 +226,9 @@ class DeepQ():
     def explore(self):
         if self.global_time <= BEFORE_TRAIN:
             return True
-        elif (self.global_time - BEFORE_TRAIN) < EXPLORE_TIME:
-            self.epsilon -= (INIT_EPSILON - FINAL_EPSILON) / EXPLORE_TIME
-        elif (self.global_time - BEFORE_TRAIN) ==  EXPLORE_TIME:
+        elif (self.global_time - BEFORE_TRAIN) < EXPLORE_STEPS:
+            self.epsilon -= (INIT_EPSILON - FINAL_EPSILON) / EXPLORE_STEPS
+        elif (self.global_time - BEFORE_TRAIN) ==  EXPLORE_STEPS:
             print('------------------ Stop Annealing. Probability to explore = {:f} ------------------'.format(FINAL_EPSILON))
         return random.random() < self.epsilon
 

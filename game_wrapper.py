@@ -4,7 +4,6 @@ import numpy as np
 from PIL import Image
 from collections import deque
 
-
 class Game():
     def __init__(self, game_name, histoy_length, render=False):
         self.env =  gym.make(game_name)
@@ -44,13 +43,6 @@ class Game():
         if self.render:
             self.env.render()
         observation_t1, reward, terminal_t1, info = self.env.step(action)
-        if terminal_t1:
-            reward = 10
-        # Redefine reward
-        #reward = abs(observation_t1[0] - (-0.5)) + abs(observation_t1[1]) # height + speed
-        #if observation_t1[0] == -1.2: # punish if touch the edge
-        #    reward -= 20
-        
         previous_observations = np.array(self.state_buffer)
         state_t1 = np.empty((self.histoy_length, self.n_observation))
         for i in range(previous_observations.shape[0]):
@@ -81,11 +73,15 @@ def example():
     init_state = game.initial_state()
     game_over = False
     N_EPISODES = 3
+    first = True
     for i_episode in range(N_EPISODES):
         while not game_over:
             game.env.render()
             action = game.env.action_space.sample()
             state, reward, game_over, info = game.step(action)
+            if first:
+                print('ob:', state[0])
+                first = False
             print('state:', state.shape)
         game.env.reset()
 

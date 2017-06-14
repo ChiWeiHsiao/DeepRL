@@ -18,6 +18,7 @@ directory = 'models/{}'.format(MODEL_ID)
 GAME_NAME = 'MountainCar-v0'
 RNEDER = False
 N_EPISODES = 1000
+REWARD_DEFINITION = 1 # 1: raw -1/10,  2: height and punish
 # HyperParameter
 COPY_STEPS = 4
 HISTORY_LENGTH = 1
@@ -33,7 +34,7 @@ n_human_transitions_used = 0 #int(REPLAY_MEMORY*0.5))
 # Annealing for exploration probability
 INIT_EPSILON = 1
 FINAL_EPSILON = 0.1
-EXPLORE_TIME = 5000
+EXPLORE_STEPS = 5000
 # Prioritized DQN configuration
 PRIDQN_ENABLE = False
 PRIDQN_CONFIG = {
@@ -55,7 +56,7 @@ def bias_variable(shape):
 
 
 class DeepQ():
-    def __init__(self, N_HISTORY_LENGTH, N_EPISODES, DISCOUNT, COPY_STEP, EXPLORE_TIME, game_name, render=False, human_transitions_file=None, n_human_transitions=0):
+    def __init__(self, N_HISTORY_LENGTH, N_EPISODES, DISCOUNT, COPY_STEP, EXPLORE_STEPS, game_name, render=False, human_transitions_file=None, n_human_transitions=0):
         self.game_name = game_name
         self.render = render
         self.N_HISTORY_LENGTH = N_HISTORY_LENGTH
@@ -65,7 +66,7 @@ class DeepQ():
         self.N_EPISODES = N_EPISODES
         self.DISCOUNT = DISCOUNT
         self.COPY_STEP = COPY_STEP
-        self.EXPLORE_TIME = EXPLORE_TIME
+        self.EXPLORE_STEPS = EXPLORE_STEPS
         self.global_time = 0
         self.epsilon = INIT_EPSILON
         # self.replay_memory = deque(maxlen=REPLAY_MEMORY)
@@ -128,6 +129,7 @@ class DeepQ():
                     #print(action_t, end=' ')
                 for i in range(SKIP_FRAMES):
                     state_t1, reward_t, terminal, info = self.game.step(action_t)  # Execute the chosen action in emulator
+                    reward_t = self.redefine_reward(reward_t, state_t1, terminal, version=REWARD_DEFINITION)
                 self.replay_memory.store([state_t, action_t, reward_t, state_t1, terminal])
                 sum_reward += reward_t
                 state_t = state_t1
@@ -217,11 +219,11 @@ class DeepQ():
     def explore(self):
         if self.global_time <= SKIP_FRAMES*BEFORE_TRAIN:
             return True
-        elif (self.global_time - SKIP_FRAMES*BEFORE_TRAIN) < self.EXPLORE_TIME:
-            self.epsilon -= (INIT_EPSILON - FINAL_EPSILON) / self.EXPLORE_TIME
-        elif (self.global_time - SKIP_FRAMES*BEFORE_TRAIN) ==  self.EXPLORE_TIME:
+        elif (self.global_time - SKIP_FRAMES*BEFORE_TRAIN) < self.EXPLORE_STEPS:
+            self.epsilon -= (INIT_EPSILON - FINAL_EPSILON) / self.EXPLORE_STEPS
+        elif (self.global_time - SKIP_FRAMES*BEFORE_TRAIN) ==  self.EXPLORE_STEPS:
             print('------------------ Stop Annealing. Probability to explore = {:f} ------------------'.format(FINAL_EPSILON))
-            self.EXPLORE_TIME -= 1
+            self.EXPLORE_STEPS -= 1
         return random.random() < self.epsilon
 
     def load_human_transitions(self):
@@ -253,10 +255,20 @@ class DeepQ():
         self.target_b['f1'].assign(self.b['f1'])
         self.target_b['f2'].assign(self.b['f2'])
 
+    def redefine_reward(self, reward, state, terminal, version=1):
+        if version == 1:
+            if terminal and state[0][0] > self.game.env.observation_space.high[0]-0.1:
+                reward = 10
+                print('Success!')
+        elif version == 2:
+            reward = abs(state[0][0] - (-0.5)) # height
+            if state[0][0] <= self.game.env.observation_space.low[0]+0.001: # punish if touch the edge
+                reward = -5
+        return reward
 
 
 if __name__ == '__main__':
     sess = tf.InteractiveSession()
-    dqn = DeepQ(HISTORY_LENGTH, N_EPISODES, DISCOUNT, COPY_STEPS, EXPLORE_TIME, GAME_NAME, render=RNEDER,
+    dqn = DeepQ(HISTORY_LENGTH, N_EPISODES, DISCOUNT, COPY_STEPS, EXPLORE_STEPS, GAME_NAME, render=RNEDER,
              human_transitions_file=human_transitions_filename, n_human_transitions=n_human_transitions_used)
     dqn.train_network(sess)
