@@ -21,7 +21,7 @@ directory = 'models/{}'.format(MODEL_ID)
 # Specify game
 GAME_NAME = 'MountainCar-v0'
 RNEDER = False
-N_EPISODES = 1000
+N_EPISODES = 10000
 REWARD_DEFINITION = 3 # 1: raw -1/10,  2: height and punish,  3: only height
 # HyperParameter
 HISTORY_LENGTH = 1
@@ -32,7 +32,7 @@ REPLAY_MEMORY = 3000
 BEFORE_TRAIN = 500
 BATCH_SIZE = 32
 # Use human player transition or not
-human_transitions_filename = 'car_human_transitions.npz'
+human_transitions_filename = 'human_agent_transitions/car_history1.npz'
 n_human_transitions_used = 0 #int(REPLAY_MEMORY*0.5))
 # Annealing for exploration probability
 INIT_EPSILON = 1  # If don't want to explore, set to 0.1
