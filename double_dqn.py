@@ -31,7 +31,7 @@ REPLAY_MEMORY = 3000
 BEFORE_TRAIN = 500
 BATCH_SIZE = 32
 # Use human player transition or not
-human_transitions_filename = 'car_human_transitions.npz'
+human_transitions_filename = 'human_agent_transitions/car_history1.npz'
 n_human_transitions_used = 0 #int(REPLAY_MEMORY*0.5))
 # Annealing for exploration probability
 INIT_EPSILON = 1
@@ -74,13 +74,13 @@ class DeepQ():
         self.EPSILON_DECREMENT = EPSILON_DECREMENT
         # self.replay_memory = deque(maxlen=REPLAY_MEMORY)
         self.record = {'reward': [], 'time_used': []}
+        self.W, self.b = self.initialize_weights()
+        self.target_W, self.target_b = self.initialize_weights()
+        self.replay_memory = Memory(capacity=REPLAY_MEMORY, enable_pri=PRIDQN_ENABLE, **PRIDQN_CONFIG)
         self.human_transitions_file = human_transitions_file
         self.n_human_transitions = n_human_transitions
         if self.n_human_transitions > 0:
             self.load_human_transitions()
-        self.W, self.b = self.initialize_weights()
-        self.target_W, self.target_b = self.initialize_weights()
-        self.replay_memory = Memory(capacity=REPLAY_MEMORY, enable_pri=PRIDQN_ENABLE, **PRIDQN_CONFIG)
 
     def create_network(self, W, b):
         x = tf.placeholder('float', [None, self.N_HISTORY_LENGTH, self.N_OBSERVATIONS])
@@ -240,8 +240,8 @@ class DeepQ():
         state_t1 = data['state_t1']
         terminal = data['terminal']
         for i in range(self.n_human_transitions):
-            transition = [state_t[i], action_t[i], reward_t[i], state_t1[i], terminal[i]]
-            self.replay_memory.append(transition)
+            reward_t[i] = self.redefine_reward(reward_t[i], state_t1[i], terminal[i], version=REWARD_DEFINITION)
+            self.replay_memory.store([state_t[i], action_t[i], reward_t[i], state_t1[i], terminal[i]])
 
     def initialize_weights(self):
         weight = {
