@@ -18,7 +18,7 @@ directory = 'models/{}'.format(MODEL_ID)
 GAME_NAME = 'MountainCar-v0'
 RNEDER = False
 N_EPISODES = 10#00
-REWARD_DEFINITION = 1 # 1: raw -1/10,  2: height and punish
+REWARD_DEFINITION = 3 # 1: raw -1/10,  2: height and punish,  3: only height
 # HyperParameter
 COPY_STEPS = 4
 HISTORY_LENGTH = 1
@@ -268,6 +268,8 @@ class DeepQ():
             reward = abs(state[0][0] - (-0.5)) # height
             if state[0][0] <= self.game.env.observation_space.low[0]+0.001: # punish if touch the edge
                 reward = -5
+        elif version == 3:
+            reward = abs(state[0][0] - (-0.5)) # height
         return reward
 
 
