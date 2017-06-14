@@ -17,14 +17,14 @@ directory = 'models/{}'.format(MODEL_ID)
 # Specify game
 GAME_NAME = 'MountainCar-v0'
 RNEDER = False
-N_EPISODES = 10#00
+N_EPISODES = 1000
 REWARD_DEFINITION = 3 # 1: raw -1/10,  2: height and punish,  3: only height
 # HyperParameter
 COPY_STEPS = 4
 HISTORY_LENGTH = 1
 SKIP_FRAMES = 1 #4
 DISCOUNT = 0.9 #0.99
-LEARNING_RATE = 0.001
+LEARNING_RATE = 0.005
 REPLAY_MEMORY = 3000
 BEFORE_TRAIN = 500
 BATCH_SIZE = 32
@@ -34,7 +34,7 @@ n_human_transitions_used = 0 #int(REPLAY_MEMORY*0.5))
 # Annealing for exploration probability
 INIT_EPSILON = 1
 FINAL_EPSILON = 0.1
-EXPLORE_STEPS = 5000
+EPSILON_DECREMENT = 0.00005
 # Prioritized DQN configuration
 PRIDQN_ENABLE = False
 PRIDQN_CONFIG = {
@@ -56,7 +56,7 @@ def bias_variable(shape):
 
 
 class DeepQ():
-    def __init__(self, N_HISTORY_LENGTH, N_EPISODES, DISCOUNT, COPY_STEP, EXPLORE_STEPS, game_name, render=False, human_transitions_file=None, n_human_transitions=0):
+    def __init__(self, N_HISTORY_LENGTH, N_EPISODES, DISCOUNT, EPSILON_DECREMENT, COPY_STEP, game_name, render=False, human_transitions_file=None, n_human_transitions=0):
         self.game_name = game_name
         self.render = render
         self.N_HISTORY_LENGTH = N_HISTORY_LENGTH
@@ -66,9 +66,9 @@ class DeepQ():
         self.N_EPISODES = N_EPISODES
         self.DISCOUNT = DISCOUNT
         self.COPY_STEP = COPY_STEP
-        self.EXPLORE_STEPS = EXPLORE_STEPS
         self.global_time = 0
         self.epsilon = INIT_EPSILON
+        self.EPSILON_DECREMENT = EPSILON_DECREMENT
         # self.replay_memory = deque(maxlen=REPLAY_MEMORY)
         self.record = {'reward': [], 'time_used': []}
         self.human_transitions_file = human_transitions_file
@@ -173,7 +173,8 @@ class DeepQ():
 
             self.record['reward'].append(sum_reward)
             self.record['time_used'].append(t)
-            print('\nEpisode {:3d}: sum of reward={:10.2f}, time used={:8d}\n'.format(episode, sum_reward, t))
+            print('\nEpisode {:3d}: sum of reward={:10.2f}, time used={:8d}'.format(episode, sum_reward, t))
+            print('current explore={:.5f}'.format(self.epsilon))
             #print('{:.2f} MB, replay memory size {:d}'.format(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1000, len(self.replay_memory)))
             self.global_time += t
 
@@ -189,11 +190,8 @@ class DeepQ():
     def explore(self):
         if self.global_time <= SKIP_FRAMES*BEFORE_TRAIN:
             return True
-        elif (self.global_time - SKIP_FRAMES*BEFORE_TRAIN) < self.EXPLORE_STEPS:
-            self.epsilon -= (INIT_EPSILON - FINAL_EPSILON) / self.EXPLORE_STEPS
-        elif (self.global_time - SKIP_FRAMES*BEFORE_TRAIN) ==  self.EXPLORE_STEPS:
-            print('------------------ Stop Annealing. Probability to explore = {:f} ------------------'.format(FINAL_EPSILON))
-            self.EXPLORE_STEPS -= 1
+        elif self.epsilon > FINAL_EPSILON:
+            self.epsilon -= self.EPSILON_DECREMENT
         return random.random() < self.epsilon
 
     def test(self, sess):
@@ -275,7 +273,7 @@ class DeepQ():
 
 if __name__ == '__main__':
     sess = tf.InteractiveSession()
-    dqn = DeepQ(HISTORY_LENGTH, N_EPISODES, DISCOUNT, COPY_STEPS, EXPLORE_STEPS, GAME_NAME, render=RNEDER,
+    dqn = DeepQ(HISTORY_LENGTH, N_EPISODES, DISCOUNT, EPSILON_DECREMENT, COPY_STEPS, GAME_NAME, render=RNEDER,
              human_transitions_file=human_transitions_filename, n_human_transitions=n_human_transitions_used)
-    #dqn.train_network(sess)
-    dqn.test(sess)
+    dqn.train_network(sess)
+    #dqn.test(sess)
