@@ -257,7 +257,6 @@ class DeepQ():
                 reward = -5
         elif version == 3:
             reward = abs(state[0][0] - (-0.5)) # height
-        print(reward)
         return reward
 
 
