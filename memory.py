@@ -108,7 +108,7 @@ class Memory(object):   # stored as ( s, a, r, s_ ) in SumTree
 
         if self.enable_pri:
             max_p = np.max(self.tree.tree[-self.tree.capacity:])
-            if max_p == 0:
+            if max_p < self.abs_err_upper:
                 max_p = self.abs_err_upper
             self.tree.add_new_priority(max_p, transition)   # set the max p for new p
         else:
@@ -126,16 +126,20 @@ class Memory(object):   # stored as ( s, a, r, s_ ) in SumTree
             for i in range(n):
                 a = segment * i
                 b = segment * (i + 1)
-                lower_bound = np.random.uniform(a, b)
-                idx, p, data = self.tree.get_leaf(lower_bound)
-                prob = p / self.tree.root_priority
-                ISWeights.append(self.tree.capacity * prob)
-                batch_idx.append(idx)
-                batch_memory.append(data)
+                while True:
+                    lower_bound = np.random.uniform(a, b)
+                    idx, p, data = self.tree.get_leaf(lower_bound)
+                    prob = p / self.tree.root_priority
+                    if self.tree.capacity * prob < self.abs_err_upper:
+                        continue
+                    ISWeights.append(self.tree.capacity * prob)
+                    batch_idx.append(idx)
+                    batch_memory.append(data)
+                    break
 
             ISWeights = np.vstack(ISWeights)
             ISWeights = np.power(ISWeights, -self.beta) / maxiwi  # normalize
-            return np.vstack(batch_memory), batch_idx, ISWeights
+            return batch_memory, batch_idx, ISWeights
         else:
             idx = np.random.choice(self.len, n)
             return np.vstack(self.tree.data[idx]), idx, np.ones(n)
