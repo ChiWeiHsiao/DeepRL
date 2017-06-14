@@ -11,6 +11,8 @@ try:
 except:
     pass
 
+random.seed(1)
+tf.set_random_seed(1)
 # Record & model filename to save
 MODEL_ID = 'double-car'
 directory = 'models/{}'.format(MODEL_ID)
@@ -61,6 +63,7 @@ class DeepQ():
         self.render = render
         self.N_HISTORY_LENGTH = N_HISTORY_LENGTH
         self.game = game_wrapper.Game(self.game_name, self.N_HISTORY_LENGTH, self.render)
+        self.game.env.seed(21)
         self.N_OBSERVATIONS = len(self.game.env.observation_space.high)
         self.N_ACTIONS = self.game.env.action_space.n
         self.N_EPISODES = N_EPISODES

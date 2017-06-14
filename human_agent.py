@@ -5,6 +5,7 @@ from collections import deque
 import numpy as np
 
 game = game_wrapper.Game('MountainCar-v0', histoy_length=1, render=True)
+game.env.seed(21)
 ACTIONS = game.env.action_space.n
 SKIP_CONTROL = 0    
 human_agent_action = 0

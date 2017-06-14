@@ -1,5 +1,6 @@
 import numpy as np
 
+np.random.seed(1)
 class _SumTree(object):
     """
     This SumTree code is modified version and the original code is from:
