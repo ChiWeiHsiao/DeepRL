@@ -19,30 +19,33 @@ random.seed(1)
 tf.set_random_seed(1)
 np.random.seed(1)
 # Record & model filename to save
-MODEL_ID = 'replay-car-reward1-lr1e4-eps1e5-disc99'
+MODEL_ID = 'replay-car-reward1'
 print(MODEL_ID)
 directory = 'models/{}'.format(MODEL_ID)
 # Specify game
 GAME_NAME = 'MountainCar-v0'
 RENDER = True
-N_EPISODES = 20000
-REWARD_DEFINITION = 1  # 1: raw -1/10,  2: height and punish,  3: only height, 4: raw -1/10/-5
+N_EPISODES = 10000
+REWARD_DEFINITION = 1   # 1: raw -1/flag,  2: height and punish,  3: only height, 4: raw -1/flag/punish
+SUCCESS_REWARD = 10  # reward when get flag, 10 or 100 or larger
+PUNISH_REWARD = -5
+MAX_STEPS = 15000
 # HyperParameter
 HISTORY_LENGTH = 1  #4
 SKIP_FRAMES = 1  #4
 DISCOUNT = 0.99  # 0.99
 LEARNING_RATE = 5e-3 # 0.005
 REPLAY_MEMORY = 10000
-BEFORE_TRAIN = 8000
+BEFORE_TRAIN = 10000
 BATCH_SIZE = 32
-N_HIDDEN_NODES = 40
+N_HIDDEN_NODES = 20
 # Use human player transition or not
 human_transitions_filename = 'human_agent_transitions/car_his4_skip4.npz'
 n_human_transitions_used = 0
 # Annealing for exploration probability
 INIT_EPSILON = 1  # If don't want to explore, set to 0.1
 FINAL_EPSILON = 0.1
-EPSILON_DECREMENT = 1e-5 #0.00005
+EPSILON_DECREMENT = 5e-5 #0.00005
 # Prioritized DQN configuration
 PRIDQN_ENABLE = False
 PRIDQN_CONFIG = {
@@ -54,11 +57,11 @@ PRIDQN_CONFIG = {
 
 # tensorflow Wrapper
 def weight_variable(shape):
-    initial = tf.random_normal(shape, stddev=0.1)
+    initial = tf.random_normal(shape, stddev=0.3)
     return tf.Variable(initial)
 
 def bias_variable(shape):
-    initial = tf.fill(shape, 0.01)
+    initial = tf.fill(shape, 0.1)
     return tf.Variable(initial)
 
 class DeepQ():
@@ -67,7 +70,7 @@ class DeepQ():
         self.render = render
         self.N_HISTORY_LENGTH = N_HISTORY_LENGTH
         self.game = game_wrapper.Game(self.game_name, self.N_HISTORY_LENGTH, self.render)
-        self.game.env.seed(1)
+        self.game.env.seed(21)
         self.N_OBSERVATIONS = len(self.game.env.observation_space.high)
         self.N_ACTIONS = self.game.env.action_space.n
         self.N_EPISODES = N_EPISODES
@@ -118,7 +121,8 @@ class DeepQ():
             t = 0
             terminal = False
             sum_reward = 0
-            while not (terminal and state_t1[0][0] > self.game.env.observation_space.high[0]-0.1):
+            while not ((terminal and state_t1[0][0] > self.game.env.observation_space.high[0]-0.1) or t >= MAX_STEPS):
+            #while not (terminal and state_t1[0][0] > self.game.env.observation_space.high[0]-0.1):
             #while not terminal:  # for reward 2/3
                 # Emulate and store trainsitions into replay_memory
                 if(self.explore()):
@@ -133,7 +137,8 @@ class DeepQ():
                     sum_reward += reward_t
                     t += 1
                     state_t = state_t1
-                    if terminal and state_t1[0][0] > self.game.env.observation_space.high[0]-0.1:
+                    if ((terminal and state_t1[0][0] > self.game.env.observation_space.high[0]-0.1) or t >= MAX_STEPS):
+                    #if terminal and state_t1[0][0] > self.game.env.observation_space.high[0]-0.1:
                     #if terminal:  # for reward 2/3
                         state_t = self.game.initial_state()
                         break
@@ -260,7 +265,7 @@ class DeepQ():
     def redefine_reward(self, reward, state, terminal, version=1):
         if version == 1:
             if terminal and state[0][0] > self.game.env.observation_space.high[0]-0.1:
-                reward = 10
+                reward = SUCCESS_REWARD
                 print('Success!')
         elif version == 2:
             if (state[0][0] > 0.5):
@@ -268,19 +273,19 @@ class DeepQ():
             else:
                 reward = 0.75*abs(state[0][0] - (-0.5)) # left height
             if terminal and state[0][0] > self.game.env.observation_space.high[0]-0.1:
-                reward = 50
+                reward = SUCCESS_REWARD
                 print('Success!')
             elif state[0][0] <= self.game.env.observation_space.low[0]+0.001: # punish if touch the edge
-                reward = -30
+                reward = PUNISH_REWARD
         elif version == 3:
             reward = abs(state[0][0] - (-0.5)) # height
         elif version == 4:
             if terminal and state[0][0] > self.game.env.observation_space.high[0]-0.1:
-                reward = 10
+                reward = SUCCESS_REWARD
                 print('Success!')
             elif state[0][0] <= self.game.env.observation_space.low[0]+0.001: # punish if touch the edge
-                print('GG')
-                reward = -5
+                print('Punish')
+                reward = PUNISH_REWARD
         return reward
 
 
