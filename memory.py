@@ -107,6 +107,8 @@ class Memory(object):   # stored as ( s, a, r, s_ ) in SumTree
         if self.len < self.capacity:
             self.len = self.len + 1
 
+        print('Store', self.len)
+
         if self.enable_pri:
             max_p = np.max(self.tree.tree[-self.tree.capacity:])
             if max_p < self.abs_err_upper:
@@ -117,6 +119,7 @@ class Memory(object):   # stored as ( s, a, r, s_ ) in SumTree
             self.tree.data_pointer = (self.tree.data_pointer + 1) % self.capacity
 
     def sample(self, n):
+        print('Sample')
         if self.enable_pri:
             batch_idx, batch_memory, ISWeights = [], [], []
             segment = self.tree.root_priority / n
@@ -127,7 +130,7 @@ class Memory(object):   # stored as ( s, a, r, s_ ) in SumTree
             for i in range(n):
                 a = segment * i
                 b = segment * (i + 1)
-                while True:
+                for _ in range(10):
                     lower_bound = np.random.uniform(a, b)
                     idx, p, data = self.tree.get_leaf(lower_bound)
                     prob = p / self.tree.root_priority
