@@ -4,10 +4,10 @@ import game_wrapper
 from collections import deque
 import numpy as np
 
-game = game_wrapper.Game('MountainCar-v0', histoy_length=1, render=True)
+game = game_wrapper.Game('MountainCar-v0', histoy_length=4, render=True)
 game.env.seed(21)
 ACTIONS = game.env.action_space.n
-SKIP_CONTROL = 0    
+SKIP_CONTROL = 4
 human_agent_action = 0
 human_wants_restart = False
 human_sets_pause = False
@@ -50,21 +50,23 @@ def play():
         if not skip:
             action_t = human_agent_action
             skip = SKIP_CONTROL
-            state_t1, reward_t, terminal, info = game.step(action_t)  # Execute the chosen action in emulator
-            print(reward_t, end=', ')
-            state_t1 = np.stack([state_t1], axis=0)
-            if t == 0:
-                store_state_t, store_action_t, store_reward_t, store_state_t1, store_terminal = state_t, [action_t], [reward_t], state_t1, [terminal]
-            else:
-                store_state_t = np.append(store_state_t, state_t, axis=0)
-                store_action_t.append(action_t)
-                store_reward_t.append(reward_t)
-                store_state_t1 = np.append(store_state_t1, state_t1, axis=0)
-                store_terminal.append(terminal)
-            state_t = state_t1
-        else:
+            last_action = action_t
+        else
+            action_t = last_action
             skip -= 1
-
+        
+        state_t1, reward_t, terminal, info = game.step(action_t)  # Execute the chosen action in emulator
+        print(reward_t, end=', ')
+        state_t1 = np.stack([state_t1], axis=0)
+        if t == 0:
+            store_state_t, store_action_t, store_reward_t, store_state_t1, store_terminal = state_t, [action_t], [reward_t], state_t1, [terminal]
+        else:
+            store_state_t = np.append(store_state_t, state_t, axis=0)
+            store_action_t.append(action_t)
+            store_reward_t.append(reward_t)
+            store_state_t1 = np.append(store_state_t1, state_t1, axis=0)
+            store_terminal.append(terminal)
+        state_t = state_t1
         game.env.render()
         #time.sleep(0.05)
 

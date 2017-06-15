@@ -17,25 +17,27 @@ except:
 
 random.seed(1)
 tf.set_random_seed(1)
+np.random.seed(1)
 # Record & model filename to save
 MODEL_ID = 'double-car'
 directory = 'models/{}'.format(MODEL_ID)
 # Specify game
 GAME_NAME = 'MountainCar-v0'
-RNEDER = False
+RNEDER = True
 N_EPISODES = 10000
-REWARD_DEFINITION = 3 # 1: raw -1/10,  2: height and punish,  3: only height
+REWARD_DEFINITION = 1  # 1: raw -1/10,  2: height and punish,  3: only height, 4: raw -1/10/-5
 # HyperParameter
-HISTORY_LENGTH = 1
-SKIP_FRAMES = 1 #4
-DISCOUNT = 0.9 #0.99
+HISTORY_LENGTH = 4
+SKIP_FRAMES = 4  #4
+DISCOUNT = 0.9  # 0.99
 LEARNING_RATE = 0.005
-REPLAY_MEMORY = 3000
-BEFORE_TRAIN = 500
+REPLAY_MEMORY = 10000
+BEFORE_TRAIN = 8000
 BATCH_SIZE = 32
+N_HIDDEN_NODES = 40
 # Use human player transition or not
 human_transitions_filename = 'human_agent_transitions/car_history1.npz'
-n_human_transitions_used = 2000 #int(REPLAY_MEMORY*0.5))
+n_human_transitions_used = 0 #int(REPLAY_MEMORY*0.5))
 # Annealing for exploration probability
 INIT_EPSILON = 1  # If don't want to explore, set to 0.1
 FINAL_EPSILON = 0.1
@@ -64,7 +66,7 @@ class DeepQ():
         self.render = render
         self.N_HISTORY_LENGTH = N_HISTORY_LENGTH
         self.game = game_wrapper.Game(self.game_name, self.N_HISTORY_LENGTH, self.render)
-        self.game.env.seed(21)
+        self.game.env.seed(1)
         self.N_OBSERVATIONS = len(self.game.env.observation_space.high)
         self.N_ACTIONS = self.game.env.action_space.n
         self.N_EPISODES = N_EPISODES
@@ -115,25 +117,23 @@ class DeepQ():
             t = 0
             terminal = False
             sum_reward = 0
-            while not terminal:
+            while not (terminal and state_t1[0][0] > self.game.env.observation_space.high[0]-0.1):
                 # Emulate and store trainsitions into replay_memory
                 if(self.explore()):
                     action_t = self.game.random_action()
-                    #print(action_t, end='\' ')
                 else:
                     action_t = max_action.eval(feed_dict={x: np.reshape(state_t, (1, self.N_HISTORY_LENGTH, self.N_OBSERVATIONS))})[0]
-                    #print(action_t, end=' ')
+                # Repeat the selected action for SKIP_FRAMES steps
                 for i in range(SKIP_FRAMES):
                     state_t1, reward_t, terminal, info = self.game.step(action_t)  # Execute the chosen action in emulator
                     reward_t = self.redefine_reward(reward_t, state_t1, terminal, version=REWARD_DEFINITION)
-
-                self.replay_memory.store([state_t, action_t, reward_t, state_t1, terminal])
-                # self.store_to_replay_memory(state_t, action_t, reward_t, state_t1, terminal)
-                sum_reward += reward_t
-                state_t = state_t1
-                if terminal:
-                    state_t = self.game.initial_state()
-                t += SKIP_FRAMES
+                    self.replay_memory.store([state_t, action_t, reward_t, state_t1, terminal])
+                    sum_reward += reward_t
+                    t += 1
+                    state_t = state_t1
+                    if terminal and state_t1[0][0] > self.game.env.observation_space.high[0]-0.1:
+                        state_t = self.game.initial_state()
+                        break
                 # Train the approx_Q_network
                 if len(self.replay_memory) >= BEFORE_TRAIN:
                     if not start_train_flag:
@@ -171,7 +171,7 @@ class DeepQ():
 
             self.record['reward'].append(sum_reward)
             self.record['time_used'].append(t)
-            print('\nEpisode {:3d}: sum of reward={:10.2f}, time used={:8d}'.format(episode, sum_reward, t))
+            print('\nEpisode {:3d}: sum of reward={:10.2f}, time used={:8d}'.format(episode+1, sum_reward, t))
             print('current explore={:.5f}'.format(self.epsilon))
             #print('{:.2f} MB, replay memory size {:d}'.format(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1000, len(self.replay_memory)))
             self.global_time += t
@@ -185,7 +185,7 @@ class DeepQ():
             json.dump(self.record, f, indent=1)
 
     def explore(self):
-        if self.global_time <= SKIP_FRAMES*BEFORE_TRAIN:
+        if len(self.replay_memory) < BEFORE_TRAIN:
             return True
         elif self.epsilon > FINAL_EPSILON:
             self.epsilon -= self.EPSILON_DECREMENT
@@ -238,11 +238,11 @@ class DeepQ():
 
     def initialize_weights(self):
         weight = {
-            'f1': weight_variable([self.N_HISTORY_LENGTH*self.N_OBSERVATIONS, 20]),
-            'f2': weight_variable([20, self.N_ACTIONS]),
+            'f1': weight_variable([self.N_HISTORY_LENGTH*self.N_OBSERVATIONS, N_HIDDEN_NODES]),
+            'f2': weight_variable([N_HIDDEN_NODES, self.N_ACTIONS]),
         }
         bias = {
-            'f1': bias_variable([20]),
+            'f1': bias_variable([N_HIDDEN_NODES]),
             'f2': bias_variable([self.N_ACTIONS]),
         }
         return weight, bias
@@ -258,6 +258,13 @@ class DeepQ():
                 reward = -5
         elif version == 3:
             reward = abs(state[0][0] - (-0.5)) # height
+        elif version == 4:
+            if terminal and state[0][0] > self.game.env.observation_space.high[0]-0.1:
+                reward = 10
+                print('Success!')
+            elif state[0][0] <= self.game.env.observation_space.low[0]+0.001: # punish if touch the edge
+                print('GG')
+                reward = -5
         return reward
 
 
