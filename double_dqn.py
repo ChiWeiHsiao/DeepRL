@@ -16,16 +16,17 @@ tf.set_random_seed(1)
 np.random.seed(1)
 # Record & model filename to save
 MODEL_ID = 'double-car'
+print(MODEL_ID)
 directory = 'models/{}'.format(MODEL_ID)
 # Specify game
 GAME_NAME = 'MountainCar-v0'
-RNEDER = True
+RENDER = True
 N_EPISODES = 10000
 REWARD_DEFINITION = 1   # 1: raw -1/10,  2: height and punish,  3: only height, 4: raw -1/10/-5
 # HyperParameter
 COPY_STEPS = 500
-HISTORY_LENGTH = 4
-SKIP_FRAMES = 4 #4
+HISTORY_LENGTH = 1  #4
+SKIP_FRAMES = 1 #4
 DISCOUNT = 0.9  #0.99
 LEARNING_RATE = 0.005
 REPLAY_MEMORY = 10000
@@ -34,7 +35,7 @@ BATCH_SIZE = 32
 N_HIDDEN_NODES = 40
 # Use human player transition or not
 human_transitions_filename = 'human_agent_transitions/car_history1.npz'
-n_human_transitions_used = 0    #int(REPLAY_MEMORY*0.5))
+n_human_transitions_used = 0
 # Annealing for exploration probability
 INIT_EPSILON = 1
 FINAL_EPSILON = 0.1
@@ -88,7 +89,7 @@ class DeepQ():
         x = tf.placeholder('float', [None, self.N_HISTORY_LENGTH, self.N_OBSERVATIONS])
         flatten = tf.contrib.layers.flatten(x)
         fc1 = tf.nn.relu(tf.add(tf.matmul(flatten, W['f1']), b['f1']))
-        output_Q = tf.nn.softmax(tf.add(tf.matmul(fc1, W['f2']), b['f2']))
+        output_Q = tf.add(tf.matmul(fc1, W['f2']), b['f2'])
         return x, output_Q
 
     def train_network(self, sess):
@@ -125,6 +126,7 @@ class DeepQ():
             terminal = False
             sum_reward = 0
             while not (terminal and state_t1[0][0] > self.game.env.observation_space.high[0]-0.1):
+            #while not terminal:  # for reward 2/3
                 # Emulate and store trainsitions into replay_memory
                 if(self.explore()):
                     action_t = self.game.random_action()
@@ -139,6 +141,7 @@ class DeepQ():
                     t += 1
                     state_t = state_t1
                     if terminal and state_t1[0][0] > self.game.env.observation_space.high[0]-0.1:
+                    #if not teminal:  # for reward 2/3
                         state_t = self.game.initial_state()
                         break
                 # Train the approx_Q_network
@@ -183,6 +186,13 @@ class DeepQ():
             #print('{:.2f} MB, replay memory size {:d}'.format(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1000, len(self.replay_memory)))
             self.global_time += t
 
+            if episode % 500 == 0:
+                if not os.path.exists(directory):
+                    os.makedirs(directory)
+                save_path = saver.save(sess, '{}/model.ckpt'.format(directory))
+                print('Model saved in file: %s' %save_path)
+                with open('record/{}.json'.format(MODEL_ID), 'w') as f:
+                    json.dump(self.record, f, indent=1) 
         # Save model
         if not os.path.exists(directory):
             os.makedirs(directory)
@@ -268,9 +278,15 @@ class DeepQ():
                 reward = 10
                 print('Success!')
         elif version == 2:
-            reward = abs(state[0][0] - (-0.5)) # height
-            if state[0][0] <= self.game.env.observation_space.low[0]+0.001: # punish if touch the edge
-                reward = -5
+            if (state[0][0] > 0.5):
+                reward = abs(state[0][0] - (-0.5)) # right height
+            else:
+                reward = 0.75*abs(state[0][0] - (-0.5)) # left height
+            if terminal and state[0][0] > self.game.env.observation_space.high[0]-0.1:
+                reward = 50
+                print('Success!')
+            elif state[0][0] <= self.game.env.observation_space.low[0]+0.001: # punish if touch the edge
+                reward = -30
         elif version == 3:
             reward = abs(state[0][0] - (-0.5)) # height
         elif version == 4:
@@ -285,7 +301,7 @@ class DeepQ():
 
 if __name__ == '__main__':
     sess = tf.InteractiveSession()
-    dqn = DeepQ(HISTORY_LENGTH, N_EPISODES, DISCOUNT, EPSILON_DECREMENT, COPY_STEPS, GAME_NAME, render=RNEDER,
+    dqn = DeepQ(HISTORY_LENGTH, N_EPISODES, DISCOUNT, EPSILON_DECREMENT, COPY_STEPS, GAME_NAME, render=RENDER,
              human_transitions_file=human_transitions_filename, n_human_transitions=n_human_transitions_used)
     dqn.train_network(sess)
     #dqn.test(sess)
