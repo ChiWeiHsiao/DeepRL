@@ -11,6 +11,8 @@ SKIP_CONTROL = 4
 human_agent_action = 0
 human_wants_restart = False
 human_sets_pause = False
+outfile = 'human_agent_transitions/car_his4_skip4'
+max_length = 5000
 
 def key_press(key, mod):
     global human_agent_action, human_wants_restart, human_sets_pause
@@ -43,15 +45,15 @@ def play():
     human_wants_restart = False
     terminal = False
     state_t = game.initial_state()
-    state_t = np.stack([state_t], axis=0)
+    state_t1 = state_t = np.stack([state_t], axis=0)
     skip = 0
     t = 0
-    while not terminal:
+    while not (terminal and state_t1[0][0][0] > game.env.observation_space.high[0]-0.1):
         if not skip:
             action_t = human_agent_action
             skip = SKIP_CONTROL
             last_action = action_t
-        else
+        else:
             action_t = last_action
             skip -= 1
         
@@ -103,5 +105,5 @@ if __name__ == '__main__':
     print("ACTIONS={}".format(ACTIONS))
     print("Press keys 1 2 3 ... to take actions 1 2 3 ...")
     print("No keys pressed is taking action 0")
-    store_human_transition(outfile='human_transitions', max_length = 2000)
+    store_human_transition(outfile=outfile, max_length = max_length)
 
