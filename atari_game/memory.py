@@ -126,7 +126,7 @@ class Memory(object):   # stored as ( s, a, r, s_ ) in SumTree
             for i in range(n):
                 a = segment * i
                 b = segment * (i + 1)
-                while True:
+                for _ in range(10):
                     lower_bound = np.random.uniform(a, b)
                     idx, p, data = self.tree.get_leaf(lower_bound)
                     prob = p / self.tree.root_priority
