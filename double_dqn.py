@@ -15,36 +15,36 @@ random.seed(1)
 tf.set_random_seed(1)
 np.random.seed(1)
 # Record & model filename to save
-MODEL_ID = 'prio-double-car-reward1'
+MODEL_ID = 'double-car-copy50-reward4-h40-hist3-skip3-dis9-lr1e4-eps1e5-ne70'
 print(MODEL_ID)
 directory = 'models/{}'.format(MODEL_ID)
 # Specify game
 GAME_NAME = 'MountainCar-v0'
 RENDER = False
-N_EPISODES = 10000
-REWARD_DEFINITION = 1   # 1: raw -1/flag,  2: height and punish,  3: only height, 4: raw -1/flag/punish
+N_EPISODES = 10
+REWARD_DEFINITION = 4   # 1: raw -1/flag,  2: height and punish,  3: only height, 4: raw -1/flag/punish
 SUCCESS_REWARD = 10  # reward when get flag, 10 or 100 or larger
-PUNISH_REWARD = -5
+PUNISH_REWARD = -10
 MAX_STEPS = 15000
 # HyperParameter
-COPY_STEPS = 500
-HISTORY_LENGTH = 1
-SKIP_FRAMES = 1
-DISCOUNT = 0.9 
-LEARNING_RATE = 5e-3 # 0.005
+COPY_STEPS = 50  #500
+HISTORY_LENGTH = 3
+SKIP_FRAMES = 3
+DISCOUNT = 0.9
+LEARNING_RATE = 1e-4
 REPLAY_MEMORY = 10000
 BEFORE_TRAIN = 10000
 BATCH_SIZE = 32
-N_HIDDEN_NODES = 20
+N_HIDDEN_NODES = 40
 # Use human player transition or not
 human_transitions_filename = 'human_agent_transitions/car_history1.npz'
 n_human_transitions_used = 0
 # Annealing for exploration probability
 INIT_EPSILON = 1
 FINAL_EPSILON = 0.1
-EPSILON_DECREMENT = 5e-5 #0.00005
+EPSILON_DECREMENT = 1e-5
 # Prioritized DQN configuration
-PRIDQN_ENABLE = True
+PRIDQN_ENABLE = False
 PRIDQN_CONFIG = {
     'epsilon': 0.01,              # small amount to avoid zero priority
     'alpha': 0.6,                 # [0~1] convert the importance of TD error to priority
@@ -128,9 +128,8 @@ class DeepQ():
             t = 0
             terminal = False
             sum_reward = 0
+            state_t = self.game.initial_state()
             while not ((terminal and state_t1[0][0] > self.game.env.observation_space.high[0]-0.1) or t >= MAX_STEPS):
-            #while not (terminal and state_t1[0][0] > self.game.env.observation_space.high[0]-0.1):
-            #while not terminal:  # for reward 2/3
                 # Emulate and store trainsitions into replay_memory
                 if(self.explore()):
                     action_t = self.game.random_action()
@@ -144,10 +143,7 @@ class DeepQ():
                     sum_reward += reward_t
                     t += 1
                     state_t = state_t1
-                    if ((terminal and state_t1[0][0] > self.game.env.observation_space.high[0]-0.1) or t >= MAX_STEPS)
-                    #if terminal and state_t1[0][0] > self.game.env.observation_space.high[0]-0.1:
-                    #if not teminal:  # for reward 2/3
-                        state_t = self.game.initial_state()
+                    if ((terminal and state_t1[0][0] > self.game.env.observation_space.high[0]-0.1) or t >= MAX_STEPS):
                         break
                 # Train the approx_Q_network
                 if len(self.replay_memory) >= BEFORE_TRAIN:
@@ -186,8 +182,8 @@ class DeepQ():
 
             self.record['reward'].append(sum_reward)
             self.record['time_used'].append(t)
-            print('\nEpisode {:3d}: sum of reward={:10.2f}, time used={:8d}'.format(episode+1, sum_reward, t))
-            print('current explore={:.5f}'.format(self.epsilon))
+            print('Episode {:3d}: sum of reward={:10.2f}, time used={:8d}'.format(episode+1, sum_reward, t))
+            print('current explore={:.5f}\n'.format(self.epsilon))
             #print('{:.2f} MB, replay memory size {:d}'.format(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1000, len(self.replay_memory)))
             self.global_time += t
 
@@ -215,38 +211,41 @@ class DeepQ():
         return random.random() < self.epsilon
 
     def test(self, sess):
+        self.epsilon = 0.1 #0
         saver = tf.train.Saver()
         model_name = '%s/model.ckpt' % directory
         saver.restore(sess, model_name)
         print('Model restored from {}'.format(model_name))
         x, output_Q = self.create_network(self.W, self.b)
         max_action = tf.argmax(output_Q, axis=1)
-
-        game = game_wrapper.Game(self.game_name, self.N_HISTORY_LENGTH, self.render)
-        state_t = game.initial_state()
         max_action_Q = tf.reduce_max(output_Q, reduction_indices=[1])
-
-        n_episodes = 20
-        total_reward = total_survival_time = 0
+        n_episodes = 1000
+        total_reward = total_time = 0
         for episode in range(n_episodes):
-            game.env.render()
+            #self.game.env.render()
             terminal = False
             sum_reward = 0
-            survival_time = 0
-            while not terminal:
-                action_t = max_action.eval(feed_dict={x: np.reshape(state_t, (1, self.N_HISTORY_LENGTH, self.N_OBSERVATIONS))})[0]
-                print(action_t, end='')
-                state_t1, reward_t, terminal, info = game.step(action_t)  # Execute the chosen action in emulator
-                sum_reward += reward_t
-                state_t = state_t1
-                if terminal:
-                    state_t = game.initial_state()
-                survival_time += 1
-            print('Run {}: reward={:5.2f}, time ={:3d}'.format(episode, sum_reward, survival_time))
+            t = 0
+            state_t = self.game.initial_state()
+            while not ((terminal and state_t1[0][0] > self.game.env.observation_space.high[0]-0.1) or t >= MAX_STEPS):
+                if(self.explore()):
+                    action_t = self.game.random_action()
+                else:
+                    action_t = max_action.eval(feed_dict={x: np.reshape(state_t, (1, self.N_HISTORY_LENGTH, self.N_OBSERVATIONS))})[0]
+                # Repeat the selected action for SKIP_FRAMES steps
+                for i in range(SKIP_FRAMES):
+                    state_t1, reward_t, terminal, info = self.game.step(action_t)  # Execute the chosen action in emulator
+                    reward_t = self.redefine_reward(reward_t, state_t1, terminal, version=REWARD_DEFINITION)
+                    self.replay_memory.store([state_t, action_t, reward_t, state_t1, terminal])
+                    sum_reward += reward_t
+                    t += 1
+                    state_t = state_t1
+                    if ((terminal and state_t1[0][0] > self.game.env.observation_space.high[0]-0.1) or t >= MAX_STEPS):
+                        break
+            print('Test {}: reward={:5.2f}, time ={:3d}'.format(episode, sum_reward, t))
             total_reward += sum_reward
-            total_survival_time += survival_time
-        print('Average: reward={:5.2f}, time ={:3.2f}'.format(total_reward/n_episodes, total_survival_time/n_episodes))
-
+            total_time += t
+        print('Average: reward={:5.2f}, time ={:3.2f}'.format(total_reward/n_episodes, total_time/n_episodes))
 
     def load_human_transitions(self):
         data = np.load(self.human_transitions_file)
@@ -309,4 +308,4 @@ if __name__ == '__main__':
     dqn = DeepQ(HISTORY_LENGTH, N_EPISODES, DISCOUNT, EPSILON_DECREMENT, COPY_STEPS, GAME_NAME, render=RENDER,
              human_transitions_file=human_transitions_filename, n_human_transitions=n_human_transitions_used)
     dqn.train_network(sess)
-    #dqn.test(sess)
+    dqn.test(sess)
