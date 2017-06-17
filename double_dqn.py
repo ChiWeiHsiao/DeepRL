@@ -15,7 +15,7 @@ random.seed(1)
 tf.set_random_seed(1)
 np.random.seed(1)
 # Record & model filename to save
-MODEL_ID = 'double-car-copy50-reward4-h40-hist3-skip3-dis9-lr1e4-eps1e5-ne100'
+MODEL_ID = 'double-car-copy4-reward4-h40-hist3-skip3-dis99-lr1e4-eps1e5-ne100'
 print(MODEL_ID)
 directory = 'models/{}'.format(MODEL_ID)
 # Specify game
@@ -27,10 +27,10 @@ SUCCESS_REWARD = 10  # reward when get flag, 10 or 100 or larger
 PUNISH_REWARD = -10
 MAX_STEPS = 15000
 # HyperParameter
-COPY_STEPS = 50  #500
+COPY_STEPS = 4  # 2~10
 HISTORY_LENGTH = 3
 SKIP_FRAMES = 3
-DISCOUNT = 0.9
+DISCOUNT = 0.99
 LEARNING_RATE = 1e-4
 REPLAY_MEMORY = 10000
 BEFORE_TRAIN = 10000
@@ -223,7 +223,7 @@ class DeepQ():
         n_episodes = 200
         total_reward = total_time = 0
         for episode in range(n_episodes):
-            #self.game.env.render()
+            self.game.env.render()
             terminal = False
             sum_reward = 0
             t = 0
@@ -241,6 +241,7 @@ class DeepQ():
                     sum_reward += reward_t
                     t += 1
                     state_t = state_t1
+                    self.game.env.render()
                     if ((terminal and state_t1[0][0] > self.game.env.observation_space.high[0]-0.1) or t >= MAX_STEPS):
                         break
             print('Test {}: reward={:5.2f}, time ={:3d}'.format(episode, sum_reward, t))
@@ -303,7 +304,7 @@ class DeepQ():
                 reward = SUCCESS_REWARD
                 print('Success!')
             elif state[0][0] <= self.game.env.observation_space.low[0]+0.001: # punish if touch the edge
-                print('Punish')
+                print('Punish', end = ' ')
                 reward = PUNISH_REWARD
         return reward
 

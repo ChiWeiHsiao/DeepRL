@@ -7,6 +7,7 @@ import numpy as np
 from collections import deque
 import random
 import os
+import time
 import json
 import game_wrapper
 from memory import Memory
@@ -19,13 +20,13 @@ random.seed(1)
 tf.set_random_seed(1)
 np.random.seed(1)
 # Record & model filename to save
-MODEL_ID = 'replay-car-reward4-h40-hist3-skip3-dis99-lr1e3-eps5e5-ne45'
+MODEL_ID = 'replay-car-reward4-h40-hist3-skip3-dis97-lr1e3-eps5e5-ne50'
 print(MODEL_ID)
 directory = 'models/{}'.format(MODEL_ID)
 # Specify game
 GAME_NAME = 'MountainCar-v0'
 RENDER = False
-N_EPISODES = 45
+N_EPISODES = 50
 REWARD_DEFINITION = 4   # 1: raw -1/flag,  2: height and punish,  3: only height, 4: raw -1/flag/punish
 SUCCESS_REWARD = 10  # reward when get flag, 10 or 100 or larger
 PUNISH_REWARD = -10
@@ -33,7 +34,7 @@ MAX_STEPS = 15000
 # HyperParameter
 HISTORY_LENGTH = 3  #4
 SKIP_FRAMES = 3  #4
-DISCOUNT = 0.99  # 0.99
+DISCOUNT = 0.97  # 0.99
 LEARNING_RATE = 1e-3 # 0.005
 REPLAY_MEMORY = 10000
 BEFORE_TRAIN = 10000
@@ -178,7 +179,7 @@ class DeepQ():
             print('current explore={:.5f}'.format(self.epsilon))
             print('avg cost = {}\n'.format(sum_cost/t))
             #print('{:.2f} MB, replay memory size {:d}'.format(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1000, len(self.replay_memory)))
-            self.global_time += tg
+            self.global_time += t
 
             if episode % 100 == 0:
                 if not os.path.exists(directory):
@@ -232,6 +233,7 @@ class DeepQ():
                     sum_reward += reward_t
                     t += 1
                     state_t = state_t1
+                    self.game.env.render()
                     if ((terminal and state_t1[0][0] > self.game.env.observation_space.high[0]-0.1) or t >= MAX_STEPS):
                         break
             print('Test {}: reward={:5.2f}, time ={:3d}'.format(episode, sum_reward, t))
