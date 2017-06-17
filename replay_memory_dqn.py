@@ -20,14 +20,14 @@ random.seed(1)
 tf.set_random_seed(1)
 np.random.seed(1)
 # Record & model filename to save
-MODEL_ID = 'replay-car-reward4-h40-hist3-skip3-dis97-lr1e3-eps5e5-ne50'
+MODEL_ID = 'replay-car-reward1-h40-hist3-skip3-dis97-lr1e3-eps5e5-ne50'
 print(MODEL_ID)
 directory = 'models/{}'.format(MODEL_ID)
 # Specify game
 GAME_NAME = 'MountainCar-v0'
 RENDER = False
 N_EPISODES = 50
-REWARD_DEFINITION = 4   # 1: raw -1/flag,  2: height and punish,  3: only height, 4: raw -1/flag/punish
+REWARD_DEFINITION = 1   # 1: raw -1/flag,  2: height and punish,  3: only height, 4: raw -1/flag/punish
 SUCCESS_REWARD = 10  # reward when get flag, 10 or 100 or larger
 PUNISH_REWARD = -10
 MAX_STEPS = 15000
@@ -157,7 +157,6 @@ class DeepQ():
 
                     # the learned value for Q-learning
                     y_j = np.where(terminal_j1, reward_j, reward_j + self.DISCOUNT * max_action_Q.eval(feed_dict={x: state_j1})[0] )
-                    sum_cost += cost.eval(feed_dict={x:state_j, y:y_j}).tolist()
 
                     if PRIDQN_ENABLE:
                         _, errors, c = sess.run([train_step, abs_errors, cost],
@@ -171,6 +170,7 @@ class DeepQ():
                         _, c = sess.run([train_step, cost],
                                                      feed_dict={x: state_j,
                                                                 y: y_j })
+                    sum_cost += c
 
             self.record['reward'].append(sum_reward)
             self.record['time_used'].append(t)

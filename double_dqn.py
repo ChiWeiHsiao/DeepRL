@@ -175,7 +175,7 @@ class DeepQ():
                         _, c = sess.run([train_step, cost],
                                                      feed_dict={x: state_j,
                                                                 y: y_j })
-                    sum_cost += cost.eval(feed_dict={x:state_j, y:y_j}).tolist()
+                    sum_cost += c
                     if t % self.COPY_STEP == 0:
                         self.copy_weights()
 
