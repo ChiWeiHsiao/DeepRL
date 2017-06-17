@@ -11,8 +11,8 @@ SKIP_CONTROL = 3
 human_agent_action = 0
 human_wants_restart = False
 human_sets_pause = False
-outfile = 'human_agent_transitions/car_his4_skip4'
-max_length = 10000
+outfile = 'human_agent_transitions/car_his3_skip3_length5000_2'
+max_length = 5000
 
 def key_press(key, mod):
     global human_agent_action, human_wants_restart, human_sets_pause
@@ -50,15 +50,17 @@ def play():
     t = 0
     while not (terminal and state_t1[0][0][0] > game.env.observation_space.high[0]-0.1):
         if not skip:
-            action_t = human_agent_action
+            if not human_agent_action:
+                action_t = game.env.action_space.sample()
+            else:
+                action_t = human_agent_action
             skip = SKIP_CONTROL
             last_action = action_t
         else:
             action_t = last_action
             skip -= 1
         
-        state_t1, reward_t, terminal, info = game.step(action_t)  # Execute the chosen action in emulator
-        print(reward_t, end=', ')
+        state_t1, reward_t, terminal, info = game.step(action_t)  # Execute the chosen action in emulator3
         state_t1 = np.stack([state_t1], axis=0)
         if t == 0:
             store_state_t, store_action_t, store_reward_t, store_state_t1, store_terminal = state_t, [action_t], [reward_t], state_t1, [terminal]
