@@ -79,7 +79,8 @@ class DeepQ():
         self.epsilon = INIT_EPSILON
         self.EPSILON_DECREMENT = EPSILON_DECREMENT
         #self.replay_memory = deque(maxlen=REPLAY_MEMORY)
-        self.record = {'reward': [], 'time_used': []}
+        self.record = {'reward': [], 'time_used': [], 'cost': []}
+        self.testing_record = {'reward': [], 'time_used': []}
         self.W, self.b = self.initialize_weights()
         self.replay_memory = Memory(capacity=REPLAY_MEMORY, enable_pri=PRIDQN_ENABLE, **PRIDQN_CONFIG)
         self.human_transitions_file = human_transitions_file
@@ -155,8 +156,9 @@ class DeepQ():
 
                     # the learned value for Q-learning
                     y_j = np.where(terminal_j1, reward_j, reward_j + self.DISCOUNT * max_action_Q.eval(feed_dict={x: state_j1})[0] )
-                    #this_run_cost = cost.eval(feed_dict={x:state_j, y:y_j})
-                    #print('cost=',this_run_cost)
+                    avg_cost = cost.eval(feed_dict={x:state_j, y:y_j})
+                    print('Avg cost = ', avg_cost)
+                    self.record['cost'].append(avg_cost)
 
                     if PRIDQN_ENABLE:
                         _, errors, c = sess.run([train_step, abs_errors, cost],
@@ -209,7 +211,7 @@ class DeepQ():
         x, output_Q = self.create_network(self.W, self.b)
         max_action = tf.argmax(output_Q, axis=1)
         max_action_Q = tf.reduce_max(output_Q, reduction_indices=[1])
-        n_episodes = 1000
+        n_episodes = 200
         total_reward = total_time = 0
         for episode in range(n_episodes):
             #self.game.env.render()
@@ -233,9 +235,13 @@ class DeepQ():
                     if ((terminal and state_t1[0][0] > self.game.env.observation_space.high[0]-0.1) or t >= MAX_STEPS):
                         break
             print('Test {}: reward={:5.2f}, time ={:3d}'.format(episode, sum_reward, t))
+            self.testing_record['reward'].append(sum_reward)
+            self.testing_record['time_used'].append(t)
             total_reward += sum_reward
             total_time += t
         print('Average: reward={:5.2f}, time ={:3.2f}'.format(total_reward/n_episodes, total_time/n_episodes))
+        with open('record/{}_test.json'.format(MODEL_ID), 'w') as f:
+            json.dump(self.testing_record, f, indent=1)
 
     def load_human_transitions(self):
         data = np.load(self.human_transitions_file)
