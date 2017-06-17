@@ -19,13 +19,13 @@ random.seed(1)
 tf.set_random_seed(1)
 np.random.seed(1)
 # Record & model filename to save
-MODEL_ID = 'replay-car-reward4-h40-hist3-skip3-dis99-lr1e3-eps5e5-ne70'
+MODEL_ID = 'replay-car-reward4-h40-hist3-skip3-dis99-lr1e3-eps5e5-ne45'
 print(MODEL_ID)
 directory = 'models/{}'.format(MODEL_ID)
 # Specify game
 GAME_NAME = 'MountainCar-v0'
 RENDER = False
-N_EPISODES = 70
+N_EPISODES = 45
 REWARD_DEFINITION = 4   # 1: raw -1/flag,  2: height and punish,  3: only height, 4: raw -1/flag/punish
 SUCCESS_REWARD = 10  # reward when get flag, 10 or 100 or larger
 PUNISH_REWARD = -10
@@ -107,6 +107,7 @@ class DeepQ():
             cost = tf.reduce_mean(ISWeights * tf.squared_difference(y, max_action_Q))
         else:
             cost = tf.reduce_mean(tf.squared_difference(y, max_action_Q))
+
         train_step = tf.train.RMSPropOptimizer(LEARNING_RATE).minimize(cost)
 
         # Emulate and store trainsitions into replay_memory
@@ -118,9 +119,8 @@ class DeepQ():
         init_op.run()
 
         for episode in range(self.N_EPISODES):
-            t = 0
+            t = sum_reward = sum_cost = 0
             terminal = False
-            sum_reward = 0
             state_t = self.game.initial_state()
             while not ((terminal and state_t1[0][0] > self.game.env.observation_space.high[0]-0.1) or t >= MAX_STEPS):
                 # Emulate and store trainsitions into replay_memory
@@ -156,9 +156,7 @@ class DeepQ():
 
                     # the learned value for Q-learning
                     y_j = np.where(terminal_j1, reward_j, reward_j + self.DISCOUNT * max_action_Q.eval(feed_dict={x: state_j1})[0] )
-                    avg_cost = cost.eval(feed_dict={x:state_j, y:y_j})
-                    print('Avg cost = ', avg_cost)
-                    self.record['cost'].append(avg_cost)
+                    sum_cost += cost.eval(feed_dict={x:state_j, y:y_j}).tolist()
 
                     if PRIDQN_ENABLE:
                         _, errors, c = sess.run([train_step, abs_errors, cost],
@@ -175,10 +173,12 @@ class DeepQ():
 
             self.record['reward'].append(sum_reward)
             self.record['time_used'].append(t)
+            self.record['cost'].append(sum_cost/t)
             print('Episode {:3d}: sum of reward={:10.2f}, time used={:8d}'.format(episode+1, sum_reward, t))
-            print('current explore={:.5f}\n'.format(self.epsilon))
+            print('current explore={:.5f}'.format(self.epsilon))
+            print('avg cost = {}\n'.format(sum_cost/t))
             #print('{:.2f} MB, replay memory size {:d}'.format(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1000, len(self.replay_memory)))
-            self.global_time += t
+            self.global_time += tg
 
             if episode % 100 == 0:
                 if not os.path.exists(directory):
@@ -214,7 +214,7 @@ class DeepQ():
         n_episodes = 200
         total_reward = total_time = 0
         for episode in range(n_episodes):
-            #self.game.env.render()
+            self.game.env.render()
             terminal = False
             sum_reward = 0
             t = 0

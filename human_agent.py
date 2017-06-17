@@ -4,15 +4,15 @@ import game_wrapper
 from collections import deque
 import numpy as np
 
-game = game_wrapper.Game('MountainCar-v0', histoy_length=4, render=True)
+game = game_wrapper.Game('MountainCar-v0', histoy_length=3, render=True)
 game.env.seed(21)
 ACTIONS = game.env.action_space.n
-SKIP_CONTROL = 4
+SKIP_CONTROL = 3
 human_agent_action = 0
 human_wants_restart = False
 human_sets_pause = False
 outfile = 'human_agent_transitions/car_his4_skip4'
-max_length = 5000
+max_length = 10000
 
 def key_press(key, mod):
     global human_agent_action, human_wants_restart, human_sets_pause

@@ -15,13 +15,13 @@ random.seed(1)
 tf.set_random_seed(1)
 np.random.seed(1)
 # Record & model filename to save
-MODEL_ID = 'double-car-copy50-reward4-h40-hist3-skip3-dis9-lr1e4-eps1e5-ne70'
+MODEL_ID = 'double-car-copy50-reward4-h40-hist3-skip3-dis9-lr1e4-eps1e5-ne100'
 print(MODEL_ID)
 directory = 'models/{}'.format(MODEL_ID)
 # Specify game
 GAME_NAME = 'MountainCar-v0'
 RENDER = False
-N_EPISODES = 10
+N_EPISODES = 100
 REWARD_DEFINITION = 4   # 1: raw -1/flag,  2: height and punish,  3: only height, 4: raw -1/flag/punish
 SUCCESS_REWARD = 10  # reward when get flag, 10 or 100 or larger
 PUNISH_REWARD = -10
@@ -126,9 +126,8 @@ class DeepQ():
         init_op.run()
 
         for episode in range(self.N_EPISODES):
-            t = 0
+            t = sum_reward = sum_cost = 0
             terminal = False
-            sum_reward = 0
             state_t = self.game.initial_state()
             while not ((terminal and state_t1[0][0] > self.game.env.observation_space.high[0]-0.1) or t >= MAX_STEPS):
                 # Emulate and store trainsitions into replay_memory
@@ -176,16 +175,16 @@ class DeepQ():
                         _, c = sess.run([train_step, cost],
                                                      feed_dict={x: state_j,
                                                                 y: y_j })
-                    avg_cost = cost.eval(feed_dict={x:state_j, y:y_j})
-                    print('Avg cost = ', avg_cost)
-                    self.record['cost'].append(avg_cost)
+                    sum_cost += cost.eval(feed_dict={x:state_j, y:y_j}).tolist()
                     if t % self.COPY_STEP == 0:
                         self.copy_weights()
 
             self.record['reward'].append(sum_reward)
             self.record['time_used'].append(t)
+            self.record['cost'].append(sum_cost/t)
             print('Episode {:3d}: sum of reward={:10.2f}, time used={:8d}'.format(episode+1, sum_reward, t))
-            print('current explore={:.5f}\n'.format(self.epsilon))
+            print('current explore={:.5f}'.format(self.epsilon))
+            print('avg cost = {}\n'.format(sum_cost/t))
             #print('{:.2f} MB, replay memory size {:d}'.format(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss/1000, len(self.replay_memory)))
             self.global_time += t
 
