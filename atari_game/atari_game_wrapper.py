@@ -6,14 +6,17 @@ from collections import deque
 
 
 class Game():
-    def __init__(self, game_name):
+    def __init__(self, game_name, histoy_length, render=False):
         self.env =  gym.make(game_name)
         #self.env = wrappers.Monitor(self.env, 'records/atari-experiment-1')
+        self.render = render
         self.n_actions = self.env.action_space.n
+        self.n_observation = len(self.env.observation_space.high)
         self.resize_width = 80
         self.resize_height = 80
-        self.histoy_length = 4  # One state contains 'histoy_length' frames
+        self.histoy_length = histoy_length  # One state contains 'histoy_length' frames
         self.state_buffer = deque() # Buffer keep 'histoy_length-1' frames
+        self.show_game_info()
 
     def initial_state(self):
         ''' Initialize game. Prepare initial state and state_buffer
@@ -23,6 +26,8 @@ class Game():
         '''
         self.state_buffer = deque()  # Clear the state buffer
         observation = self.env.reset()
+        if self.render:
+            self.env.render()
         frame = self.preprocess_frame(observation)
         single_frame = np.reshape(frame, (self.resize_width, self.resize_height, 1))
         state = single_frame
@@ -40,6 +45,8 @@ class Game():
         Build current state ( = previous 'histoy_length-1' frames + current frame ).
         Pop out the oldest frame, push latest frame into state_buffer.
         '''
+        if self.render:
+            self.env.render()
         observation_t1, reward, terminal_t1, info = self.env.step(action)
         observation_t1 = self.preprocess_frame(observation_t1)
 
@@ -74,11 +81,12 @@ class Game():
         ''' Show information about the game'''
         print('Action space: {}'.format(self.env.action_space)) # Discrete(6) => 6 actions,  either 0 or 1
         print('Observation space: {}'.format(self.env.observation_space)) # Box(250, 160, 3), rgb
+        #print('Observation high: {}'.format(self.env.observation_space.high))
+        #print('Observation low: {}'.format(self.env.observation_space.low))
 
 
 def example():
-    game = Game('AirRaid-v0')
-    game.show_game_info()
+    game = Game('Pong-v0')
     init_state = game.initial_state()
     game_over = False
     N_EPISODES = 3
